@@ -313,6 +313,7 @@ for (const viewport of [
         ["Calendário", "Uma visão do que vem."],
         ["Metas e caixinhas", "Cada objetivo, mais perto."],
         ["Quanto reservar", "Quanto cabe nos seus planos."],
+        ["Faturas", "Seus cartões, por fatura."],
         ["Nosso espaço", "Juntos, com clareza."],
         ["Contas e saldos", "Suas contas, conectadas à vida."],
         ["Visão geral", "Seu dinheiro, mais claro."],

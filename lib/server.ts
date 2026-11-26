@@ -16,6 +16,18 @@ import { categoryRuleKey } from "./category-rules";
 import { getPlanningState } from "./planning-server";
 import { getGoalsState } from "./goals-server";
 import { getReserveState } from "./reserve-server";
+import {
+  getInvoiceState,
+  ensureTransactionPaymentAllowed,
+} from "./invoice-server";
+import { ensureSourceTypeAllowed } from "./invoice-server";
+import {
+  APPLY_IMPORT_BALANCE_SQL,
+  COUNT_IMPORT_BALANCES_SQL,
+  REBASE_IMPORT_BALANCES_SQL,
+  RESTORE_IMPORT_BALANCES_SQL,
+  SAVE_IMPORT_BALANCE_SQL,
+} from "./import-balance-statements";
 import type { AppState, ImportBatch, Transaction } from "@/lib/types";
 import {
   IMPORT_TRANSACTIONS_SQL,
@@ -28,6 +40,7 @@ import {
   readJson,
   type SourceInput,
   validateImport,
+  validateImportBalances,
   validateOrigin,
   validateSource,
   validateTransactionPatch,
@@ -209,6 +222,7 @@ export async function getState(context: Context): Promise<AppState> {
     expenseCents: batch.expenseCents,
     periodStart: batch.periodStart,
     periodEnd: batch.periodEnd,
+    balanceTracking: batch.balanceTracking,
   }));
   return {
     user: {
@@ -226,6 +240,7 @@ export async function getState(context: Context): Promise<AppState> {
     ...(await getPlanningState(context, coupleId)),
     ...(await getGoalsState(context, coupleId)),
     ...(await getReserveState(context)),
+    ...(await getInvoiceState(context)),
     rules: await context.db
       .select({
         id: categoryRules.id,
@@ -301,9 +316,19 @@ export async function updateSource(
 ) {
   boundedText(id, "Conta", 100);
   const patch = validateSource(await readJson(request), true);
+  if (patch.type !== undefined)
+    await ensureSourceTypeAllowed(context, id, patch.type);
+  const changesBalance = [
+    "initialBalanceCents",
+    "balanceDate",
+    "hasOpeningBalance",
+  ].some((key) => Object.hasOwn(patch, key));
   const [source] = await context.db
     .update(sources)
-    .set(patch)
+    .set({
+      ...patch,
+      ...(changesBalance ? { balanceVersion: crypto.randomUUID() } : {}),
+    })
     .where(and(eq(sources.id, id), eq(sources.ownerId, context.user.userId)))
     .returning();
   if (!source) throw new ApiError(404, "Conta não encontrada.");
@@ -311,7 +336,9 @@ export async function updateSource(
 }
 
 export async function createImport(context: Context, request: Request) {
-  const items = validateImport(await readJson(request));
+  const body = await readJson(request);
+  const items = validateImport(body);
+  const balanceUpdates = validateImportBalances(body);
   const ownerId = context.user.userId;
   const ownSources = await context.db
     .select({ id: sources.id })
@@ -320,6 +347,18 @@ export async function createImport(context: Context, request: Request) {
   const sourceIds = new Set(ownSources.map((source) => source.id));
   if (items.some((item) => !sourceIds.has(item.sourceId)))
     throw new ApiError(400, "Escolha uma conta sua para cada arquivo.");
+  const importedSourceIds = new Set(items.map((item) => item.sourceId));
+  if (
+    balanceUpdates.some(
+      (update) =>
+        !sourceIds.has(update.sourceId) ||
+        !importedSourceIds.has(update.sourceId),
+    )
+  )
+    throw new ApiError(
+      400,
+      "O saldo de referência deve pertencer a uma conta sua presente nesta importação.",
+    );
   const member = items.some((item) => item.shared)
     ? await membership(context)
     : null;
@@ -339,8 +378,8 @@ export async function createImport(context: Context, request: Request) {
     context.d1
       .prepare(
         `INSERT INTO import_batches
-    (id, owner_id, created_at, files_json, count, income_cents, expense_cents, period_start, period_end)
-    VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?)`,
+    (id, owner_id, created_at, files_json, count, income_cents, expense_cents, period_start, period_end, balance_tracking)
+    VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?, 1)`,
       )
       .bind(
         batchId,
@@ -396,9 +435,34 @@ export async function createImport(context: Context, request: Request) {
         ownerId,
       ),
   );
+  for (const update of balanceUpdates) {
+    const afterVersion = crypto.randomUUID();
+    statements.push(
+      context.d1
+        .prepare(SAVE_IMPORT_BALANCE_SQL)
+        .bind(
+          crypto.randomUUID(),
+          batchId,
+          afterVersion,
+          ownerId,
+          update.sourceId,
+          batchId,
+        ),
+      context.d1
+        .prepare(APPLY_IMPORT_BALANCE_SQL)
+        .bind(
+          update.amountCents,
+          update.date,
+          batchId,
+          ownerId,
+          update.sourceId,
+          batchId,
+        ),
+    );
+  }
   const result = await context.d1.batch(statements);
   const imported = result
-    .slice(1, -1)
+    .slice(1, 1 + Math.ceil(items.length / 50))
     .reduce((total, item) => total + item.meta.changes, 0);
   return { imported, duplicates: items.length - imported, batchId };
 }
@@ -410,6 +474,7 @@ export async function updateTransaction(
 ) {
   boundedText(id, "Lançamento", 100);
   const patch = validateTransactionPatch(await readJson(request));
+  await ensureTransactionPaymentAllowed(context, id, patch);
   const member = await membership(context);
   if (patch.shared && !member)
     throw new ApiError(
@@ -447,12 +512,20 @@ export async function deleteImport(context: Context, id: string) {
   boundedText(id, "Importação", 100);
   const ownerId = context.user.userId;
   const [batch] = await context.db
-    .select({ id: importBatches.id })
+    .select({
+      id: importBatches.id,
+      balanceTracking: importBatches.balanceTracking,
+    })
     .from(importBatches)
     .where(and(eq(importBatches.id, id), eq(importBatches.ownerId, ownerId)))
     .limit(1);
   if (!batch) throw new ApiError(404, "Importação não encontrada.");
   const result = await context.d1.batch([
+    context.d1.prepare(COUNT_IMPORT_BALANCES_SQL).bind(ownerId, id),
+    context.d1
+      .prepare(REBASE_IMPORT_BALANCES_SQL)
+      .bind(id, ownerId, ownerId, id, id),
+    context.d1.prepare(RESTORE_IMPORT_BALANCES_SQL).bind(id, ownerId, id),
     context.d1
       .prepare("DELETE FROM transactions WHERE import_id = ? AND owner_id = ?")
       .bind(id, ownerId),
@@ -460,7 +533,16 @@ export async function deleteImport(context: Context, id: string) {
       .prepare("DELETE FROM import_batches WHERE id = ? AND owner_id = ?")
       .bind(id, ownerId),
   ]);
-  return { deleted: result[0].meta.changes };
+  const tracked = Number(
+    (result[0].results[0] as { count: number } | undefined)?.count ?? 0,
+  );
+  const restoredBalances = result[2].meta.changes;
+  return {
+    deleted: result[3].meta.changes,
+    restoredBalances,
+    keptBalances: Math.max(0, tracked - restoredBalances),
+    legacyBaselineUnknown: !batch.balanceTracking,
+  };
 }
 
 function createInviteCode(): string {

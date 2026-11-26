@@ -30,7 +30,13 @@ import { todayISO } from "../../lib/planning";
 import "./reserve.css";
 
 type Destination =
-  "imports" | "sources" | "transactions" | "budgets" | "calendar" | "goals";
+  | "imports"
+  | "sources"
+  | "transactions"
+  | "budgets"
+  | "calendar"
+  | "goals"
+  | "invoices";
 interface Props {
   data: AppState;
   month: string;
@@ -440,11 +446,19 @@ function ReserveCalculator({
               </summary>
               <p>Valores automáticos, com opção de ajuste.</p>
               <div className="reserve-advanced-fields">
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={() => onNavigate("invoices")}
+                  disabled={waiting}
+                >
+                  Conferir faturas
+                </button>
                 <AutomaticInput
                   id={`${labelId}-card`}
                   label="Faturas ainda a pagar"
                   automaticLabel="Usar estimativa automática para faturas"
-                  help="A proteção automática considera compras no cartão e compromissos de fatura. Como não sabemos qual fatura foi quitada, informe o valor real que ainda vai pagar, se já souber."
+                  help="A proteção considera faturas pendentes e compromissos sem vínculo. Confira os totais e vincule os pagamentos em Faturas; informe um ajuste manual quando necessário."
                   automatic={fields.automatic.cardReserveCents}
                   value={fields.cardReserveCents}
                   automaticAmount={estimate.cardReserveCents}

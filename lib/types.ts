@@ -5,6 +5,7 @@ import type {
 } from "./planning-types";
 import type { SavingsGoal, GoalMovement } from "./goals-types";
 import type { ReservePlan } from "./reserve-types";
+import type { CardCycle, CardInvoice, InvoicePayment } from "./invoice-types";
 export type SourceType = "bank" | "credit" | "benefit";
 export type TransactionKind =
   | "income"
@@ -22,6 +23,7 @@ export interface Source {
   initialBalanceCents: number;
   balanceDate: string;
   hasOpeningBalance: boolean;
+  balanceVersion?: string;
 }
 export interface Transaction {
   id: string;
@@ -66,6 +68,7 @@ export interface ImportBatch {
   expenseCents: number;
   periodStart: string;
   periodEnd: string;
+  balanceTracking?: boolean;
 }
 export interface Couple {
   id: string;
@@ -85,6 +88,9 @@ export interface AppState {
   goals?: SavingsGoal[];
   goalMovements?: GoalMovement[];
   reservePlans?: ReservePlan[];
+  cardCycles?: CardCycle[];
+  cardInvoices?: CardInvoice[];
+  invoicePayments?: InvoicePayment[];
 }
 export interface CategoryRule {
   id: string;

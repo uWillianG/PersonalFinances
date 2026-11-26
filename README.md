@@ -25,7 +25,25 @@ Compromissos são previsões. Confirmar pagamento/recebimento ou ignorar um venc
 
 A indicação de vencimento passado não significa confirmação de atraso: sem nova importação, o pagamento precisa ser conferido ou informado manualmente. Pausar uma recorrência mantém confirmações anteriores; remover o planejamento não apaga lançamentos importados. Planejamentos pessoais continuam privados e os conjuntos seguem o vínculo atual do casal.
 
-No celular, Início, Relatórios, Importar e Orçamentos ficam na barra inferior. **Mais** dá acesso a Lançamentos, Calendário, Metas e caixinhas, Nosso espaço e Contas e saldos.
+No celular, Início, Relatórios, Importar e Orçamentos ficam na barra inferior. **Mais** dá acesso a Lançamentos, Calendário, Metas e caixinhas, Quanto reservar, Faturas, Nosso espaço e Contas e saldos.
+
+## Faturas dos cartões
+
+**Mais → Faturas** organiza os cartões próprios pelo mês de fatura escolhido na importação. As compras e os estornos permanecem na competência já informada; configurar o ciclo não redistribui o histórico. Fechamento e vencimento são datas previstas por cartão: dias inexistentes usam o último dia do mês, e fechamento igual ou posterior ao dia de vencimento fica no mês anterior. As datas efetivas do emissor podem variar.
+
+O total pelos lançamentos é uma estimativa até ser conferido com o documento. Você pode informar o total efetivo ou voltar ao cálculo pelos lançamentos. Esse total não insere uma despesa; compras e estornos importados continuam sendo a base da análise de consumo. Diferenças, encargos e linhas ausentes precisam ser conferidos. O aplicativo não calcula juros, crédito rotativo ou transferência de dívida entre faturas automaticamente.
+
+Vincule um pagamento já importado de uma conta bancária própria, com tipo **Pagamento de fatura**, à fatura correspondente. Um pagamento pode ser dividido entre faturas; a soma dos vínculos nunca supera seu valor. Repetir o mesmo vínculo atualiza a parcela atribuída, sem duplicá-la. O estado distingue total a conferir, em aberto, parcial e pago, mostrando créditos ou excedentes quando identificáveis. Uma data passada pede conferência e não comprova inadimplência.
+
+Vincular ou desvincular não movimenta dinheiro nem altera o histórico financeiro. O vínculo só aponta qual obrigação foi quitada. Excluir uma importação que contém o pagamento remove seus vínculos e reabre a pendência. Para mudar o tipo de um pagamento vinculado ou reduzi-lo abaixo do valor usado, primeiro remova seus vínculos. Faturas são pessoais, mesmo quando alguma compra está compartilhada com o casal; os saldos privados do parceiro não são expostos.
+
+A proteção automática em **Quanto reservar** considera as faturas pendentes até o mês analisado, incluindo meses anteriores, abatendo somente pagamentos explicitamente vinculados e já realizados na data de referência. Compromissos de fatura do calendário que ainda não têm vínculo continuam protegidos. Totais não conferidos e diferenças em relação às compras importadas aparecem como hipóteses a revisar. O ajuste manual da estimativa continua disponível. A [orientação do Banco Central sobre cartões](https://www.bcb.gov.br/meubc/faqs/s/cartao) ajuda a interpretar o demonstrativo; o aplicativo não substitui o documento do emissor.
+
+## Saldos aceitos na importação e desfazer
+
+Nas novas importações, o saldo de referência aceito na prévia é salvo na mesma operação do lote e dos lançamentos. Desfazer remove o lote e restaura a referência anterior quando ela ainda corresponde à alteração daquele lote. Ajustes manuais posteriores ficam preservados. O histórico também é ajustado ao remover lotes fora de ordem, para que uma exclusão posterior não recupere o saldo de um lote já removido.
+
+Lotes anteriores a esse histórico não têm uma referência anterior recuperável. Ao removê-los, o Clara orienta conferir o saldo da conta. A demonstração reproduz a restauração apenas na memória do navegador.
 
 ## Metas e caixinhas
 
@@ -45,7 +63,7 @@ Os orçamentos e as despesas recorrentes são agrupados por categoria e escopo. 
 
 Parcelas identificadas em arquivos anteriores que ainda faltam importar no mês analisado entram na provisão da mesma categoria. Ao importar a parcela real, essa previsão é substituída pelo consumo registrado. As parcelas dos seis meses seguintes aparecem como referência separada.
 
-Como não há vínculo entre pagamento e fatura, a proteção automática para cartões usa as compras líquidas do mês e os pagamentos de fatura previstos sem vínculo. Ela não deduz automaticamente os pagamentos importados para inferir qual fatura foi quitada. Informe o valor das faturas que realmente faltam pagar quando souber esse total. As reservas virtuais também não apontam uma conta: a proteção inicial considera as metas pessoais e os aportes líquidos próprios nas metas conjuntas, limitados ao saldo dessas metas. Ajuste esse valor se a reserva estiver fora das contas cadastradas. Os aportes próprios líquidos do mês também reduzem a sobra mensal para não sugerir novamente o que já foi destinado a uma meta.
+Os pagamentos vinculados na área Faturas abatem a proteção correspondente; um pagamento sem vínculo não identifica sozinho qual fatura foi quitada. Confira os totais e use o ajuste manual se necessário. As reservas virtuais também não apontam uma conta: a proteção inicial considera as metas pessoais e os aportes líquidos próprios nas metas conjuntas, limitados ao saldo dessas metas. Ajuste esse valor se a reserva estiver fora das contas cadastradas. Os aportes próprios líquidos do mês também reduzem a sobra mensal para não sugerir novamente o que já foi destinado a uma meta.
 
 Os ajustes são privados e persistem separadamente por mês: manter disponível, outros gastos previstos e valores manuais de faturas, caixinhas e compromissos conjuntos. Alterá-los simula a estimativa antes de salvar; restaurar o automático remove somente esses ajustes. Nenhuma simulação, salvamento ou restauração cria investimentos, aportes ou lançamentos financeiros.
 

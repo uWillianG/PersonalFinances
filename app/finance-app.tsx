@@ -93,6 +93,26 @@ import { GoalsView } from "./features/goals-view";
 import { ReserveView } from "./features/reserve-view";
 import type { ReservePlan, ReservePlanInput } from "../lib/reserve-types";
 import { validateReservePlan } from "../lib/reserve-validation";
+import { InvoicesView } from "./features/invoices-view";
+import type {
+  CardCycle,
+  CardInvoice,
+  InvoiceInput,
+  InvoiceKey,
+  InvoicePayment,
+  InvoicePaymentInput,
+} from "../lib/invoice-types";
+import {
+  validateCardCycle,
+  validateInvoice,
+  validateInvoicePayment,
+} from "../lib/invoice-validation";
+import { paymentCandidates } from "../lib/invoices";
+import { todayISO } from "../lib/planning";
+import {
+  applyDemoImportBalances,
+  undoDemoImportBalances,
+} from "../lib/import-balances";
 import type {
   GoalInput,
   GoalPatch,
@@ -122,7 +142,8 @@ type Tab =
   | "budgets"
   | "calendar"
   | "goals"
-  | "reserve";
+  | "reserve"
+  | "invoices";
 type Scope = "all" | "personal" | "shared" | "pending";
 type PreviewRow = DraftTransaction & {
   key: string;
@@ -172,6 +193,7 @@ const nav = [
     short: "Reservar",
     icon: Banknote,
   },
+  { id: "invoices", label: "Faturas", short: "Faturas", icon: CreditCard },
   { id: "couple", label: "Nosso espaço", short: "Casal", icon: UsersRound },
   { id: "sources", label: "Contas e saldos", short: "Contas", icon: Wallet },
 ] as const;
@@ -236,6 +258,11 @@ const pageCopy: Record<
     title: "Quanto cabe nos seus planos.",
     subtitle:
       "Uma estimativa mensal para reservar ou investir, com os valores que você já conhece.",
+  },
+  invoices: {
+    eyebrow: "CADA CARTÃO, MAIS CLARO",
+    title: "Seus cartões, por fatura.",
+    subtitle: "Acompanhe compras, parcelas e os pagamentos de cada fatura.",
   },
 };
 const categoryColors = [
@@ -490,10 +517,30 @@ export default function FinanceApp({
     setBusy(true);
     try {
       if (demo) {
+        if (sourceEditor && input.type !== sourceEditor.type) {
+          const linked = (data.invoicePayments ?? []).some((link) =>
+            data.transactions.some(
+              (tx) =>
+                tx.id === link.transactionId && tx.sourceId === sourceEditor.id,
+            ),
+          );
+          const configured =
+            (data.cardCycles ?? []).some(
+              (cycle) => cycle.sourceId === sourceEditor.id,
+            ) ||
+            (data.cardInvoices ?? []).some(
+              (invoice) => invoice.sourceId === sourceEditor.id,
+            );
+          if (linked || configured)
+            throw new Error(
+              "Esta conta tem vínculos de fatura. Mantenha seu tipo para preservar o histórico.",
+            );
+        }
         const source = {
           ...input,
           id: (sourceEditor && sourceEditor.id) || crypto.randomUUID(),
           ownerId: data.user.id,
+          balanceVersion: crypto.randomUUID(),
         };
         setSample((s) => ({
           ...s,
@@ -545,6 +592,19 @@ export default function FinanceApp({
           }),
         );
       } else if (demo) {
+        const current = txEditor.transaction;
+        const allocated = (data.invoicePayments ?? [])
+          .filter((link) => link.transactionId === current.id)
+          .reduce((sum, link) => sum + link.amountCents, 0);
+        if (
+          allocated > 0 &&
+          ((patch.kind ?? current.kind) !== "card_payment" ||
+            (patch.amountCents ?? current.amountCents) < allocated ||
+            (patch.date ?? current.date) > todayISO())
+        )
+          throw new Error(
+            "Desvincule os pagamentos das faturas antes de alterar este lançamento.",
+          );
         setSample((s) => ({
           ...s,
           transactions: s.transactions.map((t) =>
@@ -590,6 +650,207 @@ export default function FinanceApp({
       );
     } catch (e) {
       handleError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveCardCycle(
+    sourceId: string,
+    input: Omit<CardCycle, "sourceId">,
+  ) {
+    const checked = validateCardCycle(input);
+    setBusy(true);
+    try {
+      if (demo)
+        setSample((state) => ({
+          ...state,
+          cardCycles: [
+            ...(state.cardCycles ?? []).filter(
+              (cycle) => cycle.sourceId !== sourceId,
+            ),
+            { ...checked, sourceId },
+          ],
+        }));
+      else {
+        const { cycle } = await request<{ cycle: CardCycle }>(
+          `/api/cards/${sourceId}/cycle`,
+          "POST",
+          checked,
+        );
+        setReal((state) => ({
+          ...state,
+          cardCycles: [
+            ...(state.cardCycles ?? []).filter(
+              (item) => item.sourceId !== cycle.sourceId,
+            ),
+            cycle,
+          ],
+        }));
+        await refresh();
+      }
+      setToast("Ciclo do cartão salvo.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveCardInvoice(input: InvoiceInput) {
+    const checked = validateInvoice(input);
+    setBusy(true);
+    try {
+      if (demo)
+        setSample((state) => {
+          const existing = (state.cardInvoices ?? []).find(
+            (invoice) =>
+              invoice.sourceId === checked.sourceId &&
+              invoice.month === checked.month,
+          );
+          return {
+            ...state,
+            cardInvoices: [
+              ...(state.cardInvoices ?? []).filter(
+                (invoice) => invoice.id !== existing?.id,
+              ),
+              { ...checked, id: existing?.id ?? crypto.randomUUID() },
+            ],
+          };
+        });
+      else {
+        const { invoice } = await request<{ invoice: CardInvoice }>(
+          "/api/invoices",
+          "POST",
+          checked,
+        );
+        setReal((state) => ({
+          ...state,
+          cardInvoices: [
+            ...(state.cardInvoices ?? []).filter(
+              (item) => item.id !== invoice.id,
+            ),
+            invoice,
+          ],
+        }));
+        await refresh();
+      }
+      setToast(
+        checked.confirmedTotalCents === null
+          ? "Fatura usando o total dos lançamentos."
+          : "Total da fatura conferido.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function allocateInvoicePayment(
+    key: InvoiceKey,
+    input: InvoicePaymentInput,
+  ) {
+    const checked = validateInvoicePayment(input);
+    setBusy(true);
+    try {
+      if (demo) {
+        const candidate = paymentCandidates(data, key).find(
+          (candidate) => candidate.transaction.id === checked.transactionId,
+        );
+        if (
+          !candidate ||
+          checked.amountCents >
+            candidate.availableCents + candidate.currentAllocationCents
+        )
+          throw new Error(
+            "O valor ultrapassa o pagamento disponível para esta fatura.",
+          );
+        setSample((state) => {
+          const invoice = (state.cardInvoices ?? []).find(
+            (invoice) =>
+              invoice.sourceId === key.sourceId && invoice.month === key.month,
+          ) ?? { ...key, id: crypto.randomUUID(), confirmedTotalCents: null };
+          const old = (state.invoicePayments ?? []).find(
+            (payment) =>
+              payment.invoiceId === invoice.id &&
+              payment.transactionId === checked.transactionId,
+          );
+          return {
+            ...state,
+            cardInvoices: [
+              ...(state.cardInvoices ?? []).filter(
+                (item) => item.id !== invoice.id,
+              ),
+              invoice,
+            ],
+            invoicePayments: [
+              ...(state.invoicePayments ?? []).filter(
+                (payment) => payment.id !== old?.id,
+              ),
+              {
+                ...checked,
+                invoiceId: invoice.id,
+                id: old?.id ?? crypto.randomUUID(),
+              },
+            ],
+          };
+        });
+      } else {
+        let invoice = (data.cardInvoices ?? []).find(
+          (invoice) =>
+            invoice.sourceId === key.sourceId && invoice.month === key.month,
+        );
+        if (!invoice)
+          invoice = (
+            await request<{ invoice: CardInvoice }>("/api/invoices", "POST", {
+              ...key,
+              confirmedTotalCents: null,
+              ensureOnly: true,
+            })
+          ).invoice;
+        const { payment } = await request<{ payment: InvoicePayment }>(
+          `/api/invoices/${invoice.id}/payments`,
+          "POST",
+          checked,
+        );
+        const savedInvoice = invoice;
+        setReal((state) => ({
+          ...state,
+          cardInvoices: [
+            ...(state.cardInvoices ?? []).filter(
+              (item) => item.id !== savedInvoice.id,
+            ),
+            savedInvoice,
+          ],
+          invoicePayments: [
+            ...(state.invoicePayments ?? []).filter(
+              (item) => item.id !== payment.id,
+            ),
+            payment,
+          ],
+        }));
+        await refresh();
+      }
+      setToast("Pagamento vinculado à fatura.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function unlinkInvoicePayment(id: string) {
+    setBusy(true);
+    try {
+      if (demo)
+        setSample((state) => ({
+          ...state,
+          invoicePayments: (state.invoicePayments ?? []).filter(
+            (item) => item.id !== id,
+          ),
+        }));
+      else {
+        await request(`/api/invoice-payments/${id}`, "DELETE");
+        setReal((state) => ({
+          ...state,
+          invoicePayments: (state.invoicePayments ?? []).filter(
+            (item) => item.id !== id,
+          ),
+        }));
+        await refresh();
+      }
+      setToast("Vínculo removido da fatura.");
     } finally {
       setBusy(false);
     }
@@ -1277,8 +1538,15 @@ export default function FinanceApp({
       return;
     }
     setBusy(true);
-    const balanceFailures: string[] = [];
-    const balanceUpdates = balanceSuggestions.filter((b) => b.included);
+    const balanceUpdates = balanceSuggestions
+      .filter(
+        (b) => b.included && items.some((item) => item.sourceId === b.sourceId),
+      )
+      .map(({ sourceId, amountCents, date }) => ({
+        sourceId,
+        amountCents,
+        date,
+      }));
     try {
       let result: { imported: number; duplicates: number };
       if (demo) {
@@ -1306,23 +1574,19 @@ export default function FinanceApp({
             .reduce((s, x) => s + x.amountCents, 0),
           periodStart: dates[0],
           periodEnd: dates.at(-1)!,
+          balanceTracking: true,
         };
-        setSample((s) => ({
-          ...s,
-          transactions: [...s.transactions, ...transactions],
-          imports: [batch, ...s.imports],
-          sources: s.sources.map((source) => {
-            const b = balanceUpdates.find((b) => b.sourceId === source.id);
-            return b
-              ? {
-                  ...source,
-                  initialBalanceCents: b.amountCents,
-                  balanceDate: b.date,
-                  hasOpeningBalance: true,
-                }
-              : source;
-          }),
-        }));
+        setSample((s) =>
+          applyDemoImportBalances(
+            {
+              ...s,
+              transactions: [...s.transactions, ...transactions],
+              imports: [batch, ...s.imports],
+            },
+            importId,
+            balanceUpdates,
+          ),
+        );
         result = {
           imported: items.length,
           duplicates: preview.filter((r) => r.duplicate).length,
@@ -1330,18 +1594,8 @@ export default function FinanceApp({
       } else {
         result = await request("/api/imports", "POST", {
           items: items.map(({ key, included, duplicate, ...row }) => row),
+          balanceUpdates,
         });
-        for (const b of balanceUpdates) {
-          try {
-            await request(`/api/sources/${b.sourceId}`, "PATCH", {
-              initialBalanceCents: b.amountCents,
-              balanceDate: b.date,
-              hasOpeningBalance: true,
-            });
-          } catch {
-            balanceFailures.push(sourceById(b.sourceId)?.name ?? "uma conta");
-          }
-        }
         await refresh();
       }
       setImportResult(result);
@@ -1355,11 +1609,7 @@ export default function FinanceApp({
       setFiles([]);
       setWarnings([]);
       setBalanceSuggestions([]);
-      setToast(
-        balanceFailures.length
-          ? `Importação salva. Confira o saldo de partida de ${balanceFailures.join(", ")} em Contas e saldos.`
-          : "Importação concluída.",
-      );
+      setToast("Importação concluída.");
     } catch (e) {
       handleError(e);
     } finally {
@@ -1370,18 +1620,38 @@ export default function FinanceApp({
     if (!undo) return;
     setBusy(true);
     try {
+      let message = undo.balanceTracking
+        ? "Importação desfeita. Os saldos foram conferidos com o histórico de alterações."
+        : "Importação desfeita. Confira o saldo de referência: este lote não tem histórico de restauração.";
       if (demo)
         setSample((s) => ({
-          ...s,
+          ...undoDemoImportBalances(s, undo.id),
           transactions: s.transactions.filter((t) => t.importId !== undo.id),
           imports: s.imports.filter((b) => b.id !== undo.id),
+          invoicePayments: (s.invoicePayments ?? []).filter(
+            (link) =>
+              !s.transactions.some(
+                (tx) => tx.id === link.transactionId && tx.importId === undo.id,
+              ),
+          ),
         }));
       else {
-        await request(`/api/imports/${undo.id}`, "DELETE");
+        const result = await request<{
+          restoredBalances: number;
+          keptBalances: number;
+          legacyBaselineUnknown: boolean;
+        }>(`/api/imports/${undo.id}`, "DELETE");
+        message = result.legacyBaselineUnknown
+          ? "Importação desfeita. Confira o saldo de referência: este lote é anterior ao histórico de restauração."
+          : result.keptBalances
+            ? "Importação desfeita. Ajustes de saldo posteriores foram preservados."
+            : result.restoredBalances
+              ? "Importação desfeita e saldo de referência restaurado."
+              : "Importação desfeita.";
         await refresh();
       }
       setUndo(null);
-      setToast("Importação desfeita.");
+      setToast(message);
     } catch (e) {
       handleError(e);
     } finally {
@@ -1983,6 +2253,18 @@ export default function FinanceApp({
                   busy={busy}
                   onSave={saveReservePlan}
                   onReset={resetReservePlan}
+                  onNavigate={go}
+                />
+              )}
+              {tab === "invoices" && (
+                <InvoicesView
+                  data={data}
+                  month={month}
+                  busy={busy}
+                  onSaveCycle={saveCardCycle}
+                  onSaveInvoice={saveCardInvoice}
+                  onAllocate={allocateInvoicePayment}
+                  onUnlink={unlinkInvoicePayment}
                   onNavigate={go}
                 />
               )}
@@ -3175,6 +3457,11 @@ export default function FinanceApp({
             Os {undo.count} lançamentos deste lote serão removidos, incluindo as
             correções feitas neles. Seus outros arquivos permanecem no
             histórico.
+          </p>
+          <p className="modal-intro">
+            {undo.balanceTracking
+              ? "Os saldos de referência alterados por este lote serão restaurados quando não houver um ajuste posterior. Vínculos dos pagamentos removidos também serão desfeitos."
+              : "Este lote é anterior ao histórico de restauração de saldos. Confira o saldo de referência após removê-lo."}
           </p>
           <div className="notice">
             <FileText size={19} />

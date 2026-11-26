@@ -47,6 +47,7 @@ export const sources = sqliteTable(
     hasOpeningBalance: integer("has_opening_balance", { mode: "boolean" })
       .notNull()
       .default(false),
+    balanceVersion: text("balance_version").notNull().default(""),
   },
   (table) => [uniqueIndex("sources_owner_id_id").on(table.ownerId, table.id)],
 );
@@ -97,6 +98,9 @@ export const importBatches = sqliteTable(
     expenseCents: integer("expense_cents").notNull().default(0),
     periodStart: text("period_start").notNull(),
     periodEnd: text("period_end").notNull(),
+    balanceTracking: integer("balance_tracking", { mode: "boolean" })
+      .notNull()
+      .default(false),
   },
   (table) => [
     uniqueIndex("import_batches_owner_id_id").on(table.ownerId, table.id),
@@ -140,6 +144,7 @@ export const transactions = sqliteTable(
     fingerprint: text("fingerprint").notNull(),
   },
   (table) => [
+    uniqueIndex("transactions_owner_id_id").on(table.ownerId, table.id),
     uniqueIndex("transactions_owner_source_fingerprint").on(
       table.ownerId,
       table.sourceId,
@@ -164,6 +169,124 @@ export const transactions = sqliteTable(
       columns: [table.ownerId, table.importId],
       foreignColumns: [importBatches.ownerId, importBatches.id],
     }).onDelete("cascade"),
+  ],
+);
+
+export const cardCycles = sqliteTable(
+  "card_cycles",
+  {
+    sourceId: text("source_id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    closingDay: integer("closing_day").notNull(),
+    dueDay: integer("due_day").notNull(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.ownerId, table.sourceId],
+      foreignColumns: [sources.ownerId, sources.id],
+    }).onDelete("cascade"),
+    check(
+      "card_cycles_valid_closing",
+      sql`typeof(${table.closingDay}) = 'integer' AND ${table.closingDay} BETWEEN 1 AND 31`,
+    ),
+    check(
+      "card_cycles_valid_due",
+      sql`typeof(${table.dueDay}) = 'integer' AND ${table.dueDay} BETWEEN 1 AND 31`,
+    ),
+  ],
+);
+
+export const cardInvoices = sqliteTable(
+  "card_invoices",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    sourceId: text("source_id").notNull(),
+    month: text("month").notNull(),
+    confirmedTotalCents: integer("confirmed_total_cents"),
+  },
+  (table) => [
+    uniqueIndex("card_invoices_owner_id_id").on(table.ownerId, table.id),
+    uniqueIndex("card_invoices_owner_source_month").on(
+      table.ownerId,
+      table.sourceId,
+      table.month,
+    ),
+    foreignKey({
+      columns: [table.ownerId, table.sourceId],
+      foreignColumns: [sources.ownerId, sources.id],
+    }).onDelete("cascade"),
+    check(
+      "card_invoices_nonnegative_total",
+      sql`${table.confirmedTotalCents} IS NULL OR (typeof(${table.confirmedTotalCents}) = 'integer' AND ${table.confirmedTotalCents} BETWEEN 0 AND 1000000000000)`,
+    ),
+  ],
+);
+
+export const invoicePayments = sqliteTable(
+  "invoice_payments",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    invoiceId: text("invoice_id").notNull(),
+    transactionId: text("transaction_id").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+  },
+  (table) => [
+    uniqueIndex("invoice_payments_invoice_transaction").on(
+      table.invoiceId,
+      table.transactionId,
+    ),
+    index("invoice_payments_owner_transaction").on(
+      table.ownerId,
+      table.transactionId,
+    ),
+    foreignKey({
+      columns: [table.ownerId, table.invoiceId],
+      foreignColumns: [cardInvoices.ownerId, cardInvoices.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.ownerId, table.transactionId],
+      foreignColumns: [transactions.ownerId, transactions.id],
+    }).onDelete("cascade"),
+    check(
+      "invoice_payments_positive_amount",
+      sql`typeof(${table.amountCents}) = 'integer' AND ${table.amountCents} BETWEEN 1 AND 1000000000000`,
+    ),
+  ],
+);
+
+export const importBalanceChanges = sqliteTable(
+  "import_balance_changes",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id),
+    importId: text("import_id").notNull(),
+    sourceId: text("source_id").notNull(),
+    beforeBalanceCents: integer("before_balance_cents").notNull(),
+    beforeBalanceDate: text("before_balance_date").notNull(),
+    beforeHasOpeningBalance: integer("before_has_opening_balance", {
+      mode: "boolean",
+    }).notNull(),
+    beforeVersion: text("before_version").notNull(),
+    afterVersion: text("after_version").notNull(),
+  },
+  (table) => [
+    uniqueIndex("import_balance_changes_import_source").on(
+      table.importId,
+      table.sourceId,
+    ),
+    uniqueIndex("import_balance_changes_after_version").on(table.afterVersion),
+    foreignKey({
+      columns: [table.ownerId, table.importId],
+      foreignColumns: [importBatches.ownerId, importBatches.id],
+    }).onDelete("cascade"),
+    foreignKey({
+      columns: [table.ownerId, table.sourceId],
+      foreignColumns: [sources.ownerId, sources.id],
+    }),
   ],
 );
 

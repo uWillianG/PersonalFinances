@@ -1,4 +1,5 @@
 import type { DraftTransaction, Source, Transaction } from "./types.ts";
+import type { ImportBalanceUpdate } from "./import-balances.ts";
 import { fingerprintOccurrence, transactionFingerprint } from "./transaction-identity.ts";
 
 export class ApiError extends Error {
@@ -85,7 +86,7 @@ function installment(value: unknown): number | null {
 export type ValidDraft = DraftTransaction & { sourceId: string; fileName: string; shared: boolean; note: string };
 export function validateImport(value: unknown): ValidDraft[] {
   const body = record(value);
-  allowedKeys(body, ["items"]);
+  allowedKeys(body, ["items", "balanceUpdates"]);
   if (!Array.isArray(body.items) || body.items.length < 1 || body.items.length > 5000) throw new ApiError(400, "Importe entre 1 e 5.000 lançamentos por vez.");
   return body.items.map((raw) => {
     const item = record(raw);
@@ -112,6 +113,38 @@ export function validateImport(value: unknown): ValidDraft[] {
     if (occurrence === null || row.fingerprint !== transactionFingerprint(row, occurrence)) throw new ApiError(400, "O identificador do lançamento não corresponde aos dados. Revise a importação.");
     row.fingerprint = transactionFingerprint(row, occurrence);
     return row;
+  });
+}
+
+export function validateImportBalances(value: unknown): ImportBalanceUpdate[] {
+  const body = record(value);
+  allowedKeys(body, ["items", "balanceUpdates"]);
+  if (body.balanceUpdates === undefined) return [];
+  if (!Array.isArray(body.balanceUpdates) || body.balanceUpdates.length > 100)
+    throw new ApiError(
+      400,
+      "Informe até 100 saldos de referência por importação.",
+    );
+  const seen = new Set<string>();
+  return body.balanceUpdates.map((value) => {
+    const input = record(value);
+    allowedKeys(input, ["sourceId", "amountCents", "date"]);
+    const sourceId = boundedText(
+      input.sourceId,
+      "Conta do saldo de referência",
+      100,
+    );
+    if (seen.has(sourceId))
+      throw new ApiError(
+        400,
+        "Informe somente um saldo de referência para cada conta.",
+      );
+    seen.add(sourceId);
+    return {
+      sourceId,
+      amountCents: money(input.amountCents),
+      date: validDate(input.date, "Data do saldo de referência"),
+    };
   });
 }
 

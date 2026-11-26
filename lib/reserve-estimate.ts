@@ -7,6 +7,7 @@ import {
   todayISO,
 } from "./planning.ts";
 import { formatMoney, installmentForecast } from "./finance.ts";
+import { invoiceProtection } from "./invoices.ts";
 import {
   defaultReservePlan,
   type ReserveEstimate,
@@ -376,8 +377,19 @@ export function estimateReserve(
       "Os lançamentos compartilhados do parceiro ajudam a calcular o restante do orçamento. As contas privadas dele não ficam disponíveis nesta estimativa.",
       "info",
     );
+  const tracksInvoices =
+    data.cardInvoices !== undefined ||
+    data.invoicePayments !== undefined ||
+    data.cardCycles !== undefined;
+  const invoiceData = tracksInvoices
+    ? invoiceProtection(data, month, asOf)
+    : null;
   const cardReserveCents =
-    plan.cardReserveCents ?? Math.max(cardSpendingCents, scheduledCardCents);
+    plan.cardReserveCents ??
+    Math.max(
+      invoiceData?.pendingCents ?? cardSpendingCents,
+      scheduledCardCents,
+    );
   if (
     plan.cardReserveCents === null &&
     (sources.some((source) => source.type === "credit") ||
@@ -386,7 +398,27 @@ export function estimateReserve(
     addIssue(
       "card_assumption",
       "Proteção para faturas",
-      "Usamos o maior valor entre compras líquidas no cartão deste mês e faturas previstas sem vínculo. Pagamentos bancários não comprovam qual fatura foi quitada. Ajuste o valor ainda a pagar.",
+      invoiceData
+        ? "Protegemos os saldos pendentes das faturas até este mês e os compromissos de fatura sem vínculo. Somente os pagamentos vinculados abatem uma fatura; confira os totais na área Faturas."
+        : "Usamos o maior valor entre compras líquidas no cartão deste mês e faturas previstas sem vínculo. Pagamentos bancários não comprovam qual fatura foi quitada. Ajuste o valor ainda a pagar.",
+    );
+  if (invoiceData?.unverifiedCount)
+    addIssue(
+      "unverified_invoices",
+      "Totais de fatura a conferir",
+      "Há faturas calculadas pelos lançamentos importados. Confira o total do documento para incluir encargos ou compras que ainda não aparecem nos arquivos.",
+    );
+  if (invoiceData?.unallocatedPaymentCents)
+    addIssue(
+      "unallocated_card_payments",
+      "Pagamentos sem fatura vinculada",
+      "Há pagamentos bancários ainda sem vínculo de fatura. Eles já reduzem o caixa; vincule-os à fatura correspondente para conferir o saldo pendente.",
+    );
+  if (invoiceData?.differingTotals)
+    addIssue(
+      "invoice_total_difference",
+      "Total conferido diferente dos lançamentos",
+      "A proteção de caixa usa o total conferido da fatura. A análise de consumo continua usando os lançamentos importados; confira as diferenças e as previsões de parcelas.",
     );
 
   const goals = unique(
