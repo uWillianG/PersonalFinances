@@ -1,3 +1,8 @@
+import type {
+  BudgetLimit,
+  RecurringSchedule,
+  ScheduleOccurrence,
+} from "./planning-types";
 export type SourceType = "bank" | "credit" | "benefit";
 export type TransactionKind =
   | "income"
@@ -72,6 +77,9 @@ export interface AppState {
   imports: ImportBatch[];
   couple: Couple | null;
   rules?: CategoryRule[];
+  budgets?: BudgetLimit[];
+  schedules?: RecurringSchedule[];
+  occurrences?: ScheduleOccurrence[];
 }
 export interface CategoryRule {
   id: string;

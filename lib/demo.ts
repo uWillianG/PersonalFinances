@@ -1,4 +1,5 @@
 import type { AppState, Transaction } from "./types";
+import { demoPlanning } from "./demo-planning";
 
 export function demoState(month: string): AppState {
   const ownerId = "demo-voce";
@@ -240,6 +241,7 @@ export function demoState(month: string): AppState {
     );
   }
   return {
+    ...demoPlanning(month, ownerId),
     user: { id: ownerId, name: "Você", email: "demonstracao@clara.local" },
     sources,
     transactions,

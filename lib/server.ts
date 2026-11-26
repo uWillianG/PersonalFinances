@@ -13,6 +13,7 @@ import {
   users,
 } from "@/db/schema";
 import { categoryRuleKey } from "./category-rules";
+import { getPlanningState } from "./planning-server";
 import type { AppState, ImportBatch, Transaction } from "@/lib/types";
 import {
   IMPORT_TRANSACTIONS_SQL,
@@ -30,7 +31,7 @@ import {
   validateTransactionPatch,
 } from "./validation";
 
-type Context = {
+export type Context = {
   user: ChatGPTUser;
   db: ReturnType<typeof getDb>;
   d1: D1Database;
@@ -220,6 +221,7 @@ export async function getState(context: Context): Promise<AppState> {
     partnerTransactions,
     imports,
     couple,
+    ...(await getPlanningState(context, coupleId)),
     rules: await context.db
       .select({
         id: categoryRules.id,
@@ -346,14 +348,12 @@ export async function createImport(context: Context, request: Request) {
       ),
   ];
   for (let start = 0; start < items.length; start += 50) {
-    const chunk = items
-      .slice(start, start + 50)
-      .map((item) => ({
-        ...item,
-        id: crypto.randomUUID(),
-        shared: item.shared ? 1 : 0,
-        needsReview: item.needsReview ? 1 : 0,
-      }));
+    const chunk = items.slice(start, start + 50).map((item) => ({
+      ...item,
+      id: crypto.randomUUID(),
+      shared: item.shared ? 1 : 0,
+      needsReview: item.needsReview ? 1 : 0,
+    }));
     statements.push(
       context.d1
         .prepare(IMPORT_TRANSACTIONS_SQL)

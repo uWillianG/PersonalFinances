@@ -13,6 +13,7 @@ import {
   BadgeCheck,
   Banknote,
   CalendarDays,
+  ChartColumn,
   Car,
   Check,
   CheckCheck,
@@ -50,6 +51,7 @@ import {
   Sparkles,
   Trash2,
   Tv,
+  Target,
   Upload,
   UsersRound,
   Wallet,
@@ -77,13 +79,31 @@ import {
   transactionsForMonth,
 } from "../lib/finance";
 import { demoState } from "../lib/demo";
+import type {
+  BudgetInput,
+  BudgetLimit,
+  PlanScope,
+  RecurringSchedule,
+  ScheduleInput,
+} from "../lib/planning-types";
+import { categoryKey } from "../lib/planning";
+import { ReportsView, BudgetsView } from "./features/reports-budgets";
+import { CalendarView } from "./features/calendar-view";
 import { categoryRuleKey } from "../lib/category-rules";
 import {
   fingerprintOccurrence,
   transactionFingerprint,
 } from "../lib/transaction-identity";
 
-type Tab = "overview" | "transactions" | "imports" | "couple" | "sources";
+type Tab =
+  | "overview"
+  | "transactions"
+  | "imports"
+  | "couple"
+  | "sources"
+  | "reports"
+  | "budgets"
+  | "calendar";
 type Scope = "all" | "personal" | "shared" | "pending";
 type PreviewRow = DraftTransaction & {
   key: string;
@@ -118,9 +138,68 @@ const nav = [
     icon: ReceiptText,
   },
   { id: "imports", label: "Importações", short: "Importar", icon: Upload },
+  {
+    id: "reports",
+    label: "Relatórios",
+    short: "Relatórios",
+    icon: ChartColumn,
+  },
+  { id: "budgets", label: "Orçamentos", short: "Orçamentos", icon: Target },
+  { id: "calendar", label: "Calendário", short: "Agenda", icon: CalendarDays },
   { id: "couple", label: "Nosso espaço", short: "Casal", icon: UsersRound },
   { id: "sources", label: "Contas e saldos", short: "Contas", icon: Wallet },
 ] as const;
+const mobilePrimaryTabs: Tab[] = ["overview", "reports", "imports", "budgets"];
+const pageCopy: Record<
+  Tab,
+  { eyebrow: string; title: string; subtitle: string }
+> = {
+  overview: {
+    eyebrow: "UM OLHAR PARA O SEU MÊS",
+    title: "Seu dinheiro, mais claro.",
+    subtitle:
+      "Entenda para onde foi seu dinheiro e cuide do que vem pela frente.",
+  },
+  transactions: {
+    eyebrow: "CADA GASTO CONTA UMA HISTÓRIA",
+    title: "De perto, cada movimento.",
+    subtitle:
+      "Explore seus lançamentos, ajuste categorias e organize o que é do casal.",
+  },
+  imports: {
+    eyebrow: "MENOS TRABALHO, MAIS CLAREZA",
+    title: "Seu mês começa aqui.",
+    subtitle: "Traga seus extratos e deixe a organização com a gente.",
+  },
+  couple: {
+    eyebrow: "A VIDA EM CONJUNTO",
+    title: "Juntos, com clareza.",
+    subtitle: "O que é compartilhado ganha um espaço de vocês.",
+  },
+  sources: {
+    eyebrow: "TUDO NO MESMO LUGAR",
+    title: "Suas contas, conectadas à vida.",
+    subtitle: "Bancos, cartões e benefícios na mesma visão.",
+  },
+  reports: {
+    eyebrow: "ENTENDA SEUS HÁBITOS",
+    title: "Onde seu dinheiro vai.",
+    subtitle:
+      "Descubra seus principais estabelecimentos e compare seus gastos entre os meses.",
+  },
+  budgets: {
+    eyebrow: "UM PLANO PARA CADA PRIORIDADE",
+    title: "Seu plano para o mês.",
+    subtitle:
+      "Defina limites pessoais e do casal e acompanhe o que já foi realizado.",
+  },
+  calendar: {
+    eyebrow: "O PRÓXIMO COMPROMISSO, À VISTA",
+    title: "Uma visão do que vem.",
+    subtitle:
+      "Organize contas, assinaturas e recebimentos em um calendário de vocês.",
+  },
+};
 const categoryColors = [
   "#185f4d",
   "#78b39b",
@@ -242,6 +321,7 @@ export default function FinanceApp({
   const [hydrated, setHydrated] = useState(false);
   useEffect(() => setHydrated(true), []);
   const [tab, setTab] = useState<Tab>("overview");
+  const [mobileMenu, setMobileMenu] = useState(false);
   const [month, setMonth] = useState(currentMonth());
   const [real, setReal] = useState<AppState>(() => emptyState(displayName));
   const [sample, setSample] = useState<AppState>(() =>
@@ -344,6 +424,7 @@ export default function FinanceApp({
   const lastImport = data.imports[0];
   const go = (next: Tab) => {
     setTab(next);
+    setMobileMenu(false);
     setSearch("");
     setSelected(new Set());
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -471,6 +552,280 @@ export default function FinanceApp({
       );
     } catch (e) {
       handleError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveBudget(input: BudgetInput, id?: string) {
+    if (input.scope === "couple" && !data.couple)
+      throw new Error("Conecte o casal antes de criar um orçamento conjunto.");
+    setBusy(true);
+    try {
+      if (demo) {
+        setSample((state) => {
+          const budgets = state.budgets ?? [];
+          const existing = id
+            ? budgets.find((budget) => budget.id === id)
+            : budgets.find(
+                (budget) =>
+                  budget.month === input.month &&
+                  budget.scope === input.scope &&
+                  categoryKey(budget.category) === categoryKey(input.category),
+              );
+          const budget: BudgetLimit = existing
+            ? { ...existing, limitCents: input.limitCents }
+            : {
+                ...input,
+                id: crypto.randomUUID(),
+                ownerId: state.user.id,
+                ownerName: state.user.name,
+                canEdit: true,
+              };
+          return {
+            ...state,
+            budgets: existing
+              ? budgets.map((item) => (item.id === existing.id ? budget : item))
+              : [...budgets, budget],
+          };
+        });
+      } else {
+        await request(
+          id ? `/api/budgets/${id}` : "/api/budgets",
+          id ? "PATCH" : "POST",
+          id ? { limitCents: input.limitCents } : input,
+        );
+        await refresh();
+      }
+      setToast("Orçamento salvo para o mês selecionado.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeBudget(id: string) {
+    setBusy(true);
+    try {
+      if (demo)
+        setSample((state) => ({
+          ...state,
+          budgets: (state.budgets ?? []).filter((budget) => budget.id !== id),
+        }));
+      else {
+        await request(`/api/budgets/${id}`, "DELETE");
+        await refresh();
+      }
+      setToast("Orçamento removido. Seus lançamentos permanecem no histórico.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function copyBudgets(
+    scope: PlanScope,
+    fromMonth: string,
+    toMonth: string,
+  ) {
+    setBusy(true);
+    try {
+      let copied = 0,
+        skipped = 0;
+      if (demo) {
+        const budgets = data.budgets ?? [];
+        const from = budgets.filter(
+          (budget) => budget.scope === scope && budget.month === fromMonth,
+        );
+        const existing = new Set(
+          budgets
+            .filter(
+              (budget) => budget.scope === scope && budget.month === toMonth,
+            )
+            .map((budget) => categoryKey(budget.category)),
+        );
+        const additions = from
+          .filter((budget) => !existing.has(categoryKey(budget.category)))
+          .map((budget) => ({
+            ...budget,
+            id: crypto.randomUUID(),
+            month: toMonth,
+            ownerId: data.user.id,
+            ownerName: data.user.name,
+          }));
+        copied = additions.length;
+        skipped = from.length - copied;
+        setSample((state) => ({
+          ...state,
+          budgets: [...(state.budgets ?? []), ...additions],
+        }));
+      } else {
+        const result = await request<{ copied: number; skipped: number }>(
+          "/api/budgets/copy",
+          "POST",
+          { scope, fromMonth, toMonth },
+        );
+        copied = result.copied;
+        skipped = result.skipped;
+        await refresh();
+      }
+      setToast(
+        copied
+          ? `${copied} orçamento(s) copiado(s).${skipped ? ` ${skipped} já existiam e foram mantidos.` : ""}`
+          : skipped
+            ? "As categorias já têm orçamento neste mês e foram mantidas."
+            : "Não há orçamentos para copiar do mês anterior.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveSchedule(input: ScheduleInput, id?: string) {
+    if (input.scope === "couple" && !data.couple)
+      throw new Error(
+        "Conecte o casal antes de criar uma recorrência compartilhada.",
+      );
+    setBusy(true);
+    try {
+      if (demo)
+        setSample((state) => {
+          const old = (state.schedules ?? []).find(
+            (schedule) => schedule.id === id,
+          );
+          const schedule: RecurringSchedule = old
+            ? { ...old, ...input, scope: old.scope }
+            : {
+                ...input,
+                id: crypto.randomUUID(),
+                ownerId: state.user.id,
+                ownerName: state.user.name,
+                canEdit: true,
+              };
+          return {
+            ...state,
+            schedules: old
+              ? (state.schedules ?? []).map((item) =>
+                  item.id === old.id ? schedule : item,
+                )
+              : [...(state.schedules ?? []), schedule],
+          };
+        });
+      else {
+        const { scope, ...patch } = input;
+        await request(
+          id ? `/api/schedules/${id}` : "/api/schedules",
+          id ? "PATCH" : "POST",
+          id ? patch : input,
+        );
+        await refresh();
+      }
+      setToast("Recorrência salva no calendário.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeSchedule(id: string) {
+    setBusy(true);
+    try {
+      if (demo)
+        setSample((state) => ({
+          ...state,
+          schedules: (state.schedules ?? []).filter(
+            (schedule) => schedule.id !== id,
+          ),
+          occurrences: (state.occurrences ?? []).filter(
+            (occurrence) => occurrence.scheduleId !== id,
+          ),
+        }));
+      else {
+        await request(`/api/schedules/${id}`, "DELETE");
+        await refresh();
+      }
+      setToast(
+        "Recorrência removida. Os lançamentos importados permanecem como estão.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function setOccurrence(
+    scheduleId: string,
+    dueDate: string,
+    action: "confirm" | "skip" | "reset" | "link",
+    transactionId?: string,
+  ) {
+    setBusy(true);
+    try {
+      if (demo) {
+        const schedule = (data.schedules ?? []).find(
+          (item) => item.id === scheduleId,
+        );
+        if (!schedule) throw new Error("Recorrência não encontrada.");
+        if (action === "link") {
+          const candidates =
+            schedule.scope === "personal"
+              ? data.transactions.filter((tx) => !tx.shared)
+              : [
+                  ...data.transactions.filter((tx) => tx.shared),
+                  ...data.partnerTransactions.filter((tx) => tx.shared),
+                ];
+          const tx = candidates.find((tx) => tx.id === transactionId);
+          if (!tx || tx.kind !== schedule.kind)
+            throw new Error(
+              "Escolha um lançamento compatível com esta recorrência.",
+            );
+          if (
+            (data.occurrences ?? []).some(
+              (occurrence) =>
+                occurrence.transactionId === transactionId &&
+                (occurrence.scheduleId !== scheduleId ||
+                  occurrence.dueDate !== dueDate),
+            )
+          )
+            throw new Error(
+              "Este lançamento já está vinculado a outro compromisso.",
+            );
+        }
+        setSample((state) => {
+          const rest = (state.occurrences ?? []).filter(
+            (item) =>
+              item.scheduleId !== scheduleId || item.dueDate !== dueDate,
+          );
+          return {
+            ...state,
+            occurrences:
+              action === "reset"
+                ? rest
+                : [
+                    ...rest,
+                    {
+                      id: crypto.randomUUID(),
+                      scheduleId,
+                      dueDate,
+                      state:
+                        action === "link"
+                          ? "linked"
+                          : action === "skip"
+                            ? "skipped"
+                            : "confirmed",
+                      transactionId: action === "link" ? transactionId! : null,
+                      confirmedBy: state.user.id,
+                    },
+                  ],
+          };
+        });
+      } else {
+        await request(`/api/schedules/${scheduleId}/occurrences`, "POST", {
+          dueDate,
+          action,
+          transactionId,
+        });
+        await refresh();
+      }
+      setToast(
+        action === "link"
+          ? "Compromisso vinculado ao lançamento importado."
+          : action === "reset"
+            ? "Compromisso reaberto para conferência."
+            : action === "skip"
+              ? "Este vencimento foi ignorado no calendário."
+              : "Confirmação salva no calendário, sem alterar os lançamentos.",
+      );
     } finally {
       setBusy(false);
     }
@@ -1048,39 +1403,9 @@ export default function FinanceApp({
             <>
               <div className="page-heading">
                 <div>
-                  <p className="eyebrow">
-                    {tab === "overview"
-                      ? "UM OLHAR PARA O SEU MÊS"
-                      : tab === "couple"
-                        ? "A VIDA EM CONJUNTO"
-                        : tab === "imports"
-                          ? "MENOS TRABALHO, MAIS CLAREZA"
-                          : tab === "sources"
-                            ? "TUDO NO MESMO LUGAR"
-                            : "CADA GASTO CONTA UMA HISTÓRIA"}
-                  </p>
-                  <h1>
-                    {tab === "overview"
-                      ? "Seu dinheiro, mais claro."
-                      : tab === "transactions"
-                        ? "De perto, cada movimento."
-                        : tab === "imports"
-                          ? "Seu mês começa aqui."
-                          : tab === "couple"
-                            ? "Juntos, com clareza."
-                            : "Suas contas, conectadas à vida."}
-                  </h1>
-                  <p className="page-subtitle">
-                    {tab === "overview"
-                      ? "Entenda para onde foi seu dinheiro e cuide do que vem pela frente."
-                      : tab === "transactions"
-                        ? "Explore seus lançamentos, ajuste categorias e organize o que é do casal."
-                        : tab === "imports"
-                          ? "Traga seus extratos e deixe a organização com a gente."
-                          : tab === "couple"
-                            ? "O que é compartilhado ganha um espaço de vocês."
-                            : "Bancos, cartões e benefícios na mesma visão."}
-                  </p>
+                  <p className="eyebrow">{pageCopy[tab].eyebrow}</p>
+                  <h1>{pageCopy[tab].title}</h1>
+                  <p className="page-subtitle">{pageCopy[tab].subtitle}</p>
                 </div>
                 {tab === "sources" ? (
                   <button
@@ -1100,10 +1425,7 @@ export default function FinanceApp({
                   )
                 )}
               </div>
-              {(tab === "overview" ||
-                tab === "sources" ||
-                tab === "transactions" ||
-                tab === "couple") && (
+              {tab !== "imports" && (
                 <div className="period-bar">
                   <div className="month-picker">
                     <button
@@ -1361,6 +1683,35 @@ export default function FinanceApp({
                 </>
               )}
 
+              {tab === "reports" && (
+                <ReportsView
+                  data={data}
+                  month={month}
+                  onOpenCouple={() => go("couple")}
+                />
+              )}
+              {tab === "budgets" && (
+                <BudgetsView
+                  data={data}
+                  month={month}
+                  busy={busy}
+                  onSave={saveBudget}
+                  onDelete={removeBudget}
+                  onCopy={copyBudgets}
+                  onOpenCouple={() => go("couple")}
+                />
+              )}
+              {tab === "calendar" && (
+                <CalendarView
+                  data={data}
+                  month={month}
+                  busy={busy}
+                  onSave={saveSchedule}
+                  onDelete={removeSchedule}
+                  onOccurrence={setOccurrence}
+                  onOpenCouple={() => go("couple")}
+                />
+              )}
               {tab === "transactions" && (
                 <section className="panel full-panel">
                   <div className="transactions-toolbar">
@@ -2403,19 +2754,49 @@ export default function FinanceApp({
         </main>
       </div>
       <nav className="mobile-nav" aria-label="Navegação no celular">
-        {nav.map((item) => (
-          <button
-            aria-label={item.label}
-            aria-current={tab === item.id ? "page" : undefined}
-            key={item.id}
-            onClick={() => go(item.id)}
-            className={tab === item.id ? "active" : ""}
-          >
-            <item.icon size={21} />
-            <span>{item.short}</span>
-          </button>
-        ))}
+        {mobilePrimaryTabs
+          .map((id) => nav.find((item) => item.id === id)!)
+          .map((item) => (
+            <button
+              aria-label={item.label}
+              aria-current={tab === item.id ? "page" : undefined}
+              key={item.id}
+              onClick={() => go(item.id)}
+              className={tab === item.id ? "active" : ""}
+            >
+              <item.icon size={21} />
+              <span>{item.short}</span>
+            </button>
+          ))}
+        <button
+          aria-label="Mais opções"
+          aria-current={!mobilePrimaryTabs.includes(tab) ? "page" : undefined}
+          className={!mobilePrimaryTabs.includes(tab) ? "active" : ""}
+          onClick={() => setMobileMenu(true)}
+        >
+          <MoreHorizontal size={22} />
+          <span>Mais</span>
+        </button>
       </nav>
+      {mobileMenu && (
+        <Modal title="Explorar o Clara" onClose={() => setMobileMenu(false)}>
+          <nav className="mobile-menu-list" aria-label="Todas as seções">
+            {nav.map((item) => (
+              <button
+                key={item.id}
+                aria-label={item.label}
+                aria-current={tab === item.id ? "page" : undefined}
+                className={tab === item.id ? "active" : ""}
+                onClick={() => go(item.id)}
+              >
+                <item.icon size={21} />
+                <span>{item.label}</span>
+                {tab === item.id && <Check size={17} />}
+              </button>
+            ))}
+          </nav>
+        </Modal>
+      )}
       {toast && (
         <div className="toast" role="status">
           <CircleCheck size={18} />

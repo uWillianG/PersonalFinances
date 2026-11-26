@@ -15,6 +15,13 @@
       "when": 1795652761179,
       "tag": "0001_known_storm",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795655579294,
+      "tag": "0002_lovely_chimera",
+      "breakpoints": true
     }
   ]
 }

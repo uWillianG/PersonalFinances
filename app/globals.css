@@ -2250,6 +2250,46 @@ main {
 .modal > header h2 {
   font-size: 21px;
 }
+.sidebar nav {
+  min-height: 0;
+  overflow-y: auto;
+}
+.sidebar-bottom {
+  margin-top: auto;
+  padding-top: 16px;
+}
+.mobile-menu-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 5px;
+}
+.mobile-menu-list > button {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 14px;
+  font-size: 15px;
+  text-align: left;
+  border-radius: 10px;
+  min-height: 48px;
+  color: #78907c;
+}
+.mobile-menu-list > button > span {
+  flex: 1;
+}
+.mobile-menu-list > button.active {
+  background: #eef5eb;
+  color: #175c49;
+  font-weight: 650;
+}
+@media (max-height: 1000px) and (min-width: 761px) {
+  .sidebar-note {
+    display: none;
+  }
+  .brand {
+    margin-bottom: 32px;
+  }
+}
 .rules-panel {
   margin-top: 24px;
 }

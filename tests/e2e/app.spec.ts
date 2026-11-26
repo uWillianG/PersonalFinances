@@ -308,6 +308,9 @@ for (const viewport of [
       for (const [name, heading] of [
         ["Lançamentos", "De perto, cada movimento."],
         ["Importações", "Seu mês começa aqui."],
+        ["Relatórios", "Onde seu dinheiro vai."],
+        ["Orçamentos", "Seu plano para o mês."],
+        ["Calendário", "Uma visão do que vem."],
         ["Nosso espaço", "Juntos, com clareza."],
         ["Contas e saldos", "Suas contas, conectadas à vida."],
         ["Visão geral", "Seu dinheiro, mais claro."],
@@ -316,9 +319,31 @@ for (const viewport of [
           name,
           exact: true,
         });
-        await expect(navigationButton).toBeVisible();
-        await navigationButton.click();
-        await expect(navigationButton).toHaveAttribute("aria-current", "page");
+        if (
+          viewport.name === "celular" &&
+          !(await navigationButton.isVisible())
+        ) {
+          await navigation
+            .getByRole("button", { name: "Mais opções", exact: true })
+            .click();
+          await page
+            .getByRole("dialog", { name: "Explorar o Clara" })
+            .getByRole("button", { name, exact: true })
+            .click();
+          await expect(
+            navigation.getByRole("button", {
+              name: "Mais opções",
+              exact: true,
+            }),
+          ).toHaveAttribute("aria-current", "page");
+        } else {
+          await expect(navigationButton).toBeVisible();
+          await navigationButton.click();
+          await expect(navigationButton).toHaveAttribute(
+            "aria-current",
+            "page",
+          );
+        }
         await expect(
           main.getByRole("heading", { name: heading, exact: true }),
         ).toBeVisible();

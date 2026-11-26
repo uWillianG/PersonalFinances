@@ -11,7 +11,21 @@ Finanças pessoais para duas pessoas, com uso principal pelo navegador do iPhone
 - Importação de vários arquivos em um lote, extração e sugestão de categorias, prévia com período, quantidades, totais e possíveis duplicatas, seguida de confirmação. As pendências podem ser corrigidas; o compartilhamento com o casal é uma escolha posterior.
 - Ao corrigir uma categoria, você pode ensinar uma regra para as próximas compras do mesmo estabelecimento. Categorias próprias são aceitas; as regras ficam em Contas e saldos e podem ser removidas. Não alteram automaticamente o compartilhamento com o casal.
 
-Orçamentos, metas, investimentos, conexão direta com bancos, Atalhos do iPhone e registro individual de cada compra ficam fora desta versão.
+Metas, investimentos, conexão direta com bancos, Atalhos do iPhone e registro individual de cada compra ficam fora desta versão.
+
+## Relatórios, orçamentos e calendário
+
+**Relatórios** reúne gastos líquidos por estabelecimento, número de compras, ticket médio e comparação com o mês anterior. É possível buscar um estabelecimento, filtrar categorias, ordenar o ranking e abrir os lançamentos que compõem cada valor. Há visões de todos os próprios gastos, somente pessoais e compartilhados do casal, além da comparação mensal por categoria.
+
+**Orçamentos** permite definir um limite por categoria e mês, acompanhar realizado, disponível e valor ultrapassado, editar/remover limites e copiar categorias ausentes do mês anterior sem sobrescrever os limites atuais. O orçamento pessoal considera apenas lançamentos não compartilhados. O orçamento do casal considera os compartilhados dos dois; os dois membros podem editar seus limites comuns.
+
+**Calendário** organiza receitas, despesas e pagamentos de fatura recorrentes, pessoais ou compartilhados, com repetição semanal, mensal ou anual. Datas mensais como dia 31 usam o último dia dos meses mais curtos; recorrências anuais de 29 de fevereiro usam 28 de fevereiro quando necessário. É possível definir data final, pausar e retomar uma recorrência.
+
+Compromissos são previsões. Confirmar pagamento/recebimento ou ignorar um vencimento altera somente o calendário, sem criar uma receita/despesa nem mexer no saldo. Vincular um lançamento utiliza um movimento já importado; um movimento só pode estar vinculado a uma ocorrência. Se uma importação for removida, a referência apagada deixa o compromisso novamente a conferir. Pagamentos de fatura aparecem separados das demais despesas para evitar somar duas vezes a compra e a quitação no planejamento.
+
+A indicação de vencimento passado não significa confirmação de atraso: sem nova importação, o pagamento precisa ser conferido ou informado manualmente. Pausar uma recorrência mantém confirmações anteriores; remover o planejamento não apaga lançamentos importados. Planejamentos pessoais continuam privados e os conjuntos seguem o vínculo atual do casal.
+
+No celular, Início, Relatórios, Importar e Orçamentos ficam na barra inferior. **Mais** dá acesso a Lançamentos, Calendário, Nosso espaço e Contas e saldos.
 
 ## Importação e limites dos formatos
 
