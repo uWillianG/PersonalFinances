@@ -1,0 +1,6 @@
+data,descricao,valor,tipo,categoria
+2026-11-02,Pix Mercado Exemplo,-125.90,despesa,Mercado
+2026-11-05,Salário Empresa Exemplo,4200.00,receita,Salário
+2026-11-06,Recarga Sólides VA,800.00,beneficio,Benefícios
+2026-11-08,Loja Exemplo parcela 1/3,-200.00,despesa,Compras
+2026-11-10,Pagamento de fatura,-650.00,pagamento_fatura,Fatura
