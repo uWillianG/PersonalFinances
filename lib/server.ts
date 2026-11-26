@@ -14,6 +14,7 @@ import {
 } from "@/db/schema";
 import { categoryRuleKey } from "./category-rules";
 import { getPlanningState } from "./planning-server";
+import { getGoalsState } from "./goals-server";
 import type { AppState, ImportBatch, Transaction } from "@/lib/types";
 import {
   IMPORT_TRANSACTIONS_SQL,
@@ -222,6 +223,7 @@ export async function getState(context: Context): Promise<AppState> {
     imports,
     couple,
     ...(await getPlanningState(context, coupleId)),
+    ...(await getGoalsState(context, coupleId)),
     rules: await context.db
       .select({
         id: categoryRules.id,

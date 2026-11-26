@@ -11,7 +11,7 @@ Finanças pessoais para duas pessoas, com uso principal pelo navegador do iPhone
 - Importação de vários arquivos em um lote, extração e sugestão de categorias, prévia com período, quantidades, totais e possíveis duplicatas, seguida de confirmação. As pendências podem ser corrigidas; o compartilhamento com o casal é uma escolha posterior.
 - Ao corrigir uma categoria, você pode ensinar uma regra para as próximas compras do mesmo estabelecimento. Categorias próprias são aceitas; as regras ficam em Contas e saldos e podem ser removidas. Não alteram automaticamente o compartilhamento com o casal.
 
-Metas, investimentos, conexão direta com bancos, Atalhos do iPhone e registro individual de cada compra ficam fora desta versão.
+Investimentos com cotações ou rentabilidade, conexão direta com bancos, Atalhos do iPhone e registro individual de cada compra ficam fora desta versão.
 
 ## Relatórios, orçamentos e calendário
 
@@ -25,7 +25,17 @@ Compromissos são previsões. Confirmar pagamento/recebimento ou ignorar um venc
 
 A indicação de vencimento passado não significa confirmação de atraso: sem nova importação, o pagamento precisa ser conferido ou informado manualmente. Pausar uma recorrência mantém confirmações anteriores; remover o planejamento não apaga lançamentos importados. Planejamentos pessoais continuam privados e os conjuntos seguem o vínculo atual do casal.
 
-No celular, Início, Relatórios, Importar e Orçamentos ficam na barra inferior. **Mais** dá acesso a Lançamentos, Calendário, Nosso espaço e Contas e saldos.
+No celular, Início, Relatórios, Importar e Orçamentos ficam na barra inferior. **Mais** dá acesso a Lançamentos, Calendário, Metas e caixinhas, Nosso espaço e Contas e saldos.
+
+## Metas e caixinhas
+
+Crie metas pessoais ou do casal com nome, valor desejado e prazo opcional. Cada caixinha mostra o valor reservado, o que falta, o progresso e uma sugestão de aporte mensal calculada a partir do prazo. A sugestão divide o restante pelos meses de calendário, incluindo o mês atual e o mês do prazo; depois do prazo, mostra o restante como pendente. Essa área acompanha o histórico completo, independentemente do mês selecionado nas outras seções.
+
+Aportes e resgates são registros manuais de uma reserva virtual: não fazem transferências, não criam lançamentos financeiros e não alteram os saldos das contas. O valor registrado deve corresponder ao dinheiro que você já separou; o Clara não verifica se ele está disponível no banco. O saldo consolidado também inclui benefícios, que têm restrições de uso, por isso ele não é apresentado como dinheiro livre para reservar ou investir.
+
+Cada movimento guarda data, valor, observação opcional e quem o registrou. Um resgate não pode ultrapassar o valor reservado; tentativas repetidas do mesmo registro não duplicam o aporte. O histórico é preservado: para corrigir um valor registrado, faça um movimento inverso e registre o correto. Metas sem movimentos podem ser excluídas. Metas com histórico podem ser arquivadas e reativadas; reservas arquivadas continuam no total reservado e permitem resgates, mas exigem reativação antes de novos aportes.
+
+As metas pessoais são privadas. Os dois integrantes do vínculo atual podem editar as metas do casal e registrar contribuições, sem acessar metas pessoais do parceiro. Esses registros são planejamento, sem cálculo de dívidas ou reembolso entre os dois. O modo demonstração inclui metas e contribuições fictícias e mantém as alterações somente na memória do navegador.
 
 ## Importação e limites dos formatos
 

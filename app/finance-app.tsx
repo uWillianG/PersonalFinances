@@ -89,6 +89,20 @@ import type {
 import { categoryKey } from "../lib/planning";
 import { ReportsView, BudgetsView } from "./features/reports-budgets";
 import { CalendarView } from "./features/calendar-view";
+import { GoalsView } from "./features/goals-view";
+import type {
+  GoalInput,
+  GoalPatch,
+  GoalMovementInput,
+  GoalMovement,
+  SavingsGoal,
+} from "../lib/goals-types";
+import { goalProgress } from "../lib/goals";
+import {
+  validateGoal,
+  validateGoalPatch,
+  validateGoalMovement,
+} from "../lib/goals-validation";
 import { categoryRuleKey } from "../lib/category-rules";
 import {
   fingerprintOccurrence,
@@ -103,7 +117,8 @@ type Tab =
   | "sources"
   | "reports"
   | "budgets"
-  | "calendar";
+  | "calendar"
+  | "goals";
 type Scope = "all" | "personal" | "shared" | "pending";
 type PreviewRow = DraftTransaction & {
   key: string;
@@ -146,6 +161,7 @@ const nav = [
   },
   { id: "budgets", label: "Orçamentos", short: "Orçamentos", icon: Target },
   { id: "calendar", label: "Calendário", short: "Agenda", icon: CalendarDays },
+  { id: "goals", label: "Metas e caixinhas", short: "Metas", icon: Sparkles },
   { id: "couple", label: "Nosso espaço", short: "Casal", icon: UsersRound },
   { id: "sources", label: "Contas e saldos", short: "Contas", icon: Wallet },
 ] as const;
@@ -198,6 +214,12 @@ const pageCopy: Record<
     title: "Uma visão do que vem.",
     subtitle:
       "Organize contas, assinaturas e recebimentos em um calendário de vocês.",
+  },
+  goals: {
+    eyebrow: "ESPAÇO PARA OS SEUS PLANOS",
+    title: "Cada objetivo, mais perto.",
+    subtitle:
+      "Organize suas reservas pessoais e do casal e acompanhe cada conquista.",
   },
 };
 const categoryColors = [
@@ -552,6 +574,160 @@ export default function FinanceApp({
       );
     } catch (e) {
       handleError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveGoal(input: GoalInput | GoalPatch, id?: string) {
+    const { scope: _scope, ...patch } = input as GoalInput;
+    const checked = id ? validateGoalPatch(patch) : validateGoal(input);
+    if (!id && (checked as GoalInput).scope === "couple" && !data.couple)
+      throw new Error("Conecte o casal antes de criar uma meta conjunta.");
+    setBusy(true);
+    try {
+      if (demo) {
+        if (id && !(data.goals ?? []).some((goal) => goal.id === id))
+          throw new Error("Meta não encontrada.");
+        setSample((state) => ({
+          ...state,
+          goals: id
+            ? (state.goals ?? []).map((goal) =>
+                goal.id === id
+                  ? { ...goal, ...checked, scope: goal.scope }
+                  : goal,
+              )
+            : [
+                ...(state.goals ?? []),
+                {
+                  ...(checked as GoalInput),
+                  id: crypto.randomUUID(),
+                  ownerId: state.user.id,
+                  ownerName: state.user.name,
+                  canEdit: true,
+                } satisfies SavingsGoal,
+              ],
+        }));
+      } else {
+        const { goal } = await request<{ goal: SavingsGoal }>(
+          id ? `/api/goals/${id}` : "/api/goals",
+          id ? "PATCH" : "POST",
+          checked,
+        );
+        setReal((state) => ({
+          ...state,
+          goals: [
+            ...(state.goals ?? []).filter((item) => item.id !== goal.id),
+            goal,
+          ],
+        }));
+        await refresh();
+      }
+      setToast("Meta salva.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeGoal(id: string) {
+    setBusy(true);
+    try {
+      if (demo) {
+        if (
+          (data.goalMovements ?? []).some((movement) => movement.goalId === id)
+        )
+          throw new Error("Arquive a meta para preservar seu histórico.");
+        setSample((state) => ({
+          ...state,
+          goals: (state.goals ?? []).filter((goal) => goal.id !== id),
+        }));
+      } else {
+        await request(`/api/goals/${id}`, "DELETE");
+        setReal((state) => ({
+          ...state,
+          goals: (state.goals ?? []).filter((goal) => goal.id !== id),
+        }));
+        await refresh();
+      }
+      setToast("Meta excluída.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function addGoalMovement(goalId: string, input: GoalMovementInput) {
+    const checked = validateGoalMovement(input);
+    setBusy(true);
+    try {
+      if (demo) {
+        const goal = (data.goals ?? []).find((item) => item.id === goalId);
+        if (!goal) throw new Error("Meta não encontrada.");
+        const old = (data.goalMovements ?? []).find(
+          (item) => item.id === checked.id,
+        );
+        if (old) {
+          if (
+            old.goalId !== goalId ||
+            old.ownerId !== data.user.id ||
+            old.kind !== checked.kind ||
+            old.amountCents !== checked.amountCents ||
+            old.date !== checked.date ||
+            old.note !== checked.note
+          )
+            throw new Error(
+              "Este registro já foi utilizado. Abra um novo aporte ou resgate.",
+            );
+        } else {
+          const reserved = goalProgress(
+            goal,
+            data.goalMovements ?? [],
+          ).reservedCents;
+          if (checked.kind === "deposit" && goal.archived)
+            throw new Error("Reative a meta antes de registrar um aporte.");
+          const next =
+            reserved +
+            (checked.kind === "deposit"
+              ? checked.amountCents
+              : -checked.amountCents);
+          if (next < 0)
+            throw new Error("O resgate não pode superar o valor reservado.");
+          if (next > 1_000_000_000_000)
+            throw new Error("A reserva excede o limite permitido.");
+          setSample((state) => ({
+            ...state,
+            goalMovements: [
+              ...(state.goalMovements ?? []),
+              {
+                ...checked,
+                goalId,
+                ownerId: state.user.id,
+                ownerName: state.user.name,
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          }));
+        }
+      } else {
+        const { movement } = await request<{ movement: GoalMovement }>(
+          `/api/goals/${goalId}/movements`,
+          "POST",
+          checked,
+        );
+        // Keep the server-confirmed reservation visible even if the following
+        // state refresh fails, so a saved contribution is not mistaken for a failure.
+        setReal((state) => ({
+          ...state,
+          goalMovements: [
+            ...(state.goalMovements ?? []).filter(
+              (item) => item.id !== movement.id,
+            ),
+            movement,
+          ],
+        }));
+        await refresh();
+      }
+      setToast(
+        checked.kind === "deposit"
+          ? "Aporte registrado na caixinha."
+          : "Resgate registrado na caixinha.",
+      );
     } finally {
       setBusy(false);
     }
@@ -1425,7 +1601,7 @@ export default function FinanceApp({
                   )
                 )}
               </div>
-              {tab !== "imports" && (
+              {tab !== "imports" && tab !== "goals" && (
                 <div className="period-bar">
                   <div className="month-picker">
                     <button
@@ -1709,6 +1885,16 @@ export default function FinanceApp({
                   onSave={saveSchedule}
                   onDelete={removeSchedule}
                   onOccurrence={setOccurrence}
+                  onOpenCouple={() => go("couple")}
+                />
+              )}
+              {tab === "goals" && (
+                <GoalsView
+                  data={data}
+                  busy={busy}
+                  onSave={saveGoal}
+                  onDelete={removeGoal}
+                  onMovement={addGoalMovement}
                   onOpenCouple={() => go("couple")}
                 />
               )}

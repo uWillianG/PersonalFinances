@@ -3,6 +3,7 @@ import type {
   RecurringSchedule,
   ScheduleOccurrence,
 } from "./planning-types";
+import type { SavingsGoal, GoalMovement } from "./goals-types";
 export type SourceType = "bank" | "credit" | "benefit";
 export type TransactionKind =
   | "income"
@@ -80,6 +81,8 @@ export interface AppState {
   budgets?: BudgetLimit[];
   schedules?: RecurringSchedule[];
   occurrences?: ScheduleOccurrence[];
+  goals?: SavingsGoal[];
+  goalMovements?: GoalMovement[];
 }
 export interface CategoryRule {
   id: string;

@@ -311,6 +311,7 @@ for (const viewport of [
         ["Relatórios", "Onde seu dinheiro vai."],
         ["Orçamentos", "Seu plano para o mês."],
         ["Calendário", "Uma visão do que vem."],
+        ["Metas e caixinhas", "Cada objetivo, mais perto."],
         ["Nosso espaço", "Juntos, com clareza."],
         ["Contas e saldos", "Suas contas, conectadas à vida."],
         ["Visão geral", "Seu dinheiro, mais claro."],

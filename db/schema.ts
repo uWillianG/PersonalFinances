@@ -289,3 +289,65 @@ export const scheduleOccurrences = sqliteTable(
     ),
   ],
 );
+
+// Caixinhas are virtual allocations. No movements in these tables change the
+// imported financial ledger or a source balance.
+export const savingsGoals = sqliteTable(
+  "savings_goals",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    coupleId: text("couple_id").references(() => couples.id, {
+      onDelete: "cascade",
+    }),
+    scope: text("scope", { enum: ["personal", "couple"] }).notNull(),
+    name: text("name").notNull(),
+    targetCents: integer("target_cents").notNull(),
+    targetDate: text("target_date"),
+    archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+  },
+  (table) => [
+    index("savings_goals_owner").on(table.ownerId),
+    index("savings_goals_couple").on(table.coupleId),
+    check(
+      "savings_goals_valid_scope",
+      sql`(${table.scope} = 'personal' AND ${table.coupleId} IS NULL) OR (${table.scope} = 'couple' AND ${table.coupleId} IS NOT NULL)`,
+    ),
+    check(
+      "savings_goals_positive_target",
+      sql`typeof(${table.targetCents}) = 'integer' AND ${table.targetCents} > 0 AND ${table.targetCents} <= 1000000000000`,
+    ),
+    check("savings_goals_valid_archived", sql`${table.archived} IN (0, 1)`),
+  ],
+);
+
+export const goalMovements = sqliteTable(
+  "goal_movements",
+  {
+    id: text("id").primaryKey(),
+    goalId: text("goal_id")
+      .notNull()
+      .references(() => savingsGoals.id, { onDelete: "cascade" }),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id),
+    kind: text("kind", { enum: ["deposit", "withdrawal"] }).notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    date: text("date").notNull(),
+    note: text("note").notNull().default(""),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("goal_movements_goal_date").on(table.goalId, table.date),
+    check(
+      "goal_movements_valid_kind",
+      sql`${table.kind} IN ('deposit', 'withdrawal')`,
+    ),
+    check(
+      "goal_movements_positive_amount",
+      sql`typeof(${table.amountCents}) = 'integer' AND ${table.amountCents} > 0 AND ${table.amountCents} <= 1000000000000`,
+    ),
+  ],
+);
