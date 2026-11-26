@@ -37,6 +37,22 @@ Cada movimento guarda data, valor, observação opcional e quem o registrou. Um 
 
 As metas pessoais são privadas. Os dois integrantes do vínculo atual podem editar as metas do casal e registrar contribuições, sem acessar metas pessoais do parceiro. Esses registros são planejamento, sem cálculo de dívidas ou reembolso entre os dois. O modo demonstração inclui metas e contribuições fictícias e mantém as alterações somente na memória do navegador.
 
+## Estimativa de quanto reservar ou investir
+
+Em **Mais → Quanto reservar**, acompanhe uma estimativa pessoal por mês. O cálculo compara dois limites: a sobra das entradas bancárias efetivamente registradas após o consumo e os compromissos, e o caixa bancário conhecido após proteger faturas, caixinhas e o valor que você deseja manter disponível. A estimativa usa o menor limite positivo. O vale-alimentação fica fora da renda, do consumo e do caixa dessa análise. Recebimentos recorrentes ainda previstos são exibidos somente como contexto.
+
+Os orçamentos e as despesas recorrentes são agrupados por categoria e escopo. Para não contar a mesma previsão duas vezes, a provisão usa o maior entre o restante do orçamento e os compromissos sem lançamento vinculado. Confirmar uma recorrência sem vinculá-la ao extrato não prova que ela já esteja no saldo importado. Os compromissos conjuntos entram inicialmente por inteiro como hipótese conservadora; você pode informar a sua parte, sem divisão automática ou acesso aos saldos privados do parceiro.
+
+Parcelas identificadas em arquivos anteriores que ainda faltam importar no mês analisado entram na provisão da mesma categoria. Ao importar a parcela real, essa previsão é substituída pelo consumo registrado. As parcelas dos seis meses seguintes aparecem como referência separada.
+
+Como não há vínculo entre pagamento e fatura, a proteção automática para cartões usa as compras líquidas do mês e os pagamentos de fatura previstos sem vínculo. Ela não deduz automaticamente os pagamentos importados para inferir qual fatura foi quitada. Informe o valor das faturas que realmente faltam pagar quando souber esse total. As reservas virtuais também não apontam uma conta: a proteção inicial considera as metas pessoais e os aportes líquidos próprios nas metas conjuntas, limitados ao saldo dessas metas. Ajuste esse valor se a reserva estiver fora das contas cadastradas. Os aportes próprios líquidos do mês também reduzem a sobra mensal para não sugerir novamente o que já foi destinado a uma meta.
+
+Os ajustes são privados e persistem separadamente por mês: manter disponível, outros gastos previstos e valores manuais de faturas, caixinhas e compromissos conjuntos. Alterá-los simula a estimativa antes de salvar; restaurar o automático remove somente esses ajustes. Nenhuma simulação, salvamento ou restauração cria investimentos, aportes ou lançamentos financeiros.
+
+Meses futuros, ausência de saldo bancário inicial conhecido e lançamentos a revisar impedem uma sugestão positiva. Movimentos posteriores à data analisada não são usados como dinheiro já disponível. Os avisos mostram as hipóteses e as limitações das importações, que não são atualizadas automaticamente pelos bancos. A estimativa não prevê gastos ausentes dos arquivos nem indica produtos financeiros. A orientação geral sobre orçamento e formação de reservas pode ser consultada no [Banco Central](https://www.bcb.gov.br/cidadaniafinanceira/lidando-imprevistos); a fórmula do aplicativo é uma escolha de planejamento explicada na própria tela.
+
+A importação passou a respeitar a saída de dinheiro em devoluções enviadas, em vez de classificá-las como estorno recebido apenas pelo texto. Registros antigos não são alterados automaticamente. Uma devolução Pix enviada antiga identificada como estorno bloqueia a estimativa até revisão. Se um lote antigo foi afetado, confira os tipos no histórico; antes de reimportar o mesmo arquivo, revise/remova o lote afetado, pois a mudança de tipo também muda a identidade de deduplicação.
+
 ## Importação e limites dos formatos
 
 CSV e OFX são lidos como dados estruturados. PDF com texto passa por extração no navegador. Imagens e capturas de tela podem passar por OCR no navegador, útil para o histórico do Sólides Benefícios quando não houver exportação. Várias capturas do mesmo período podem ser selecionadas juntas.

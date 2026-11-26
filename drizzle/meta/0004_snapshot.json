@@ -1,0 +1,1431 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "377a510e-bd34-4a8e-8c7d-cefdc05b6a9d",
+  "prevId": "8f22e0cd-2c58-4faf-9ee1-9d048858d9cc",
+  "tables": {
+    "budget_limits": {
+      "name": "budget_limits",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "couple_id": {
+          "name": "couple_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "scope_key": {
+          "name": "scope_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "month": {
+          "name": "month",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "category_key": {
+          "name": "category_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "limit_cents": {
+          "name": "limit_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "budget_limits_scope_month_category": {
+          "name": "budget_limits_scope_month_category",
+          "columns": [
+            "scope_key",
+            "month",
+            "category_key"
+          ],
+          "isUnique": true
+        },
+        "budget_limits_owner_month": {
+          "name": "budget_limits_owner_month",
+          "columns": [
+            "owner_id",
+            "month"
+          ],
+          "isUnique": false
+        },
+        "budget_limits_couple_month": {
+          "name": "budget_limits_couple_month",
+          "columns": [
+            "couple_id",
+            "month"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "budget_limits_owner_id_users_id_fk": {
+          "name": "budget_limits_owner_id_users_id_fk",
+          "tableFrom": "budget_limits",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "budget_limits_couple_id_couples_id_fk": {
+          "name": "budget_limits_couple_id_couples_id_fk",
+          "tableFrom": "budget_limits",
+          "tableTo": "couples",
+          "columnsFrom": [
+            "couple_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "budget_limits_valid_scope": {
+          "name": "budget_limits_valid_scope",
+          "value": "(\"budget_limits\".\"scope\" = 'personal' AND \"budget_limits\".\"couple_id\" IS NULL AND \"budget_limits\".\"scope_key\" = 'personal:' || \"budget_limits\".\"owner_id\") OR (\"budget_limits\".\"scope\" = 'couple' AND \"budget_limits\".\"couple_id\" IS NOT NULL AND \"budget_limits\".\"scope_key\" = 'couple:' || \"budget_limits\".\"couple_id\")"
+        },
+        "budget_limits_positive_integer": {
+          "name": "budget_limits_positive_integer",
+          "value": "typeof(\"budget_limits\".\"limit_cents\") = 'integer' AND \"budget_limits\".\"limit_cents\" > 0 AND \"budget_limits\".\"limit_cents\" <= 1000000000000"
+        }
+      }
+    },
+    "category_rules": {
+      "name": "category_rules",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "normalized_description": {
+          "name": "normalized_description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "category_rules_owner_key": {
+          "name": "category_rules_owner_key",
+          "columns": [
+            "owner_id",
+            "normalized_description"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "category_rules_owner_id_users_id_fk": {
+          "name": "category_rules_owner_id_users_id_fk",
+          "tableFrom": "category_rules",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "couple_members": {
+      "name": "couple_members",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "couple_id": {
+          "name": "couple_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "slot": {
+          "name": "slot",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "joined_at": {
+          "name": "joined_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "couple_members_couple_slot": {
+          "name": "couple_members_couple_slot",
+          "columns": [
+            "couple_id",
+            "slot"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "couple_members_user_id_users_id_fk": {
+          "name": "couple_members_user_id_users_id_fk",
+          "tableFrom": "couple_members",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "couple_members_couple_id_couples_id_fk": {
+          "name": "couple_members_couple_id_couples_id_fk",
+          "tableFrom": "couple_members",
+          "tableTo": "couples",
+          "columnsFrom": [
+            "couple_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "couple_members_valid_slot": {
+          "name": "couple_members_valid_slot",
+          "value": "\"couple_members\".\"slot\" IN (1, 2)"
+        }
+      }
+    },
+    "couples": {
+      "name": "couples",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "invite_hash": {
+          "name": "invite_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "invite_expires_at": {
+          "name": "invite_expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "couples_invite_hash": {
+          "name": "couples_invite_hash",
+          "columns": [
+            "invite_hash"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "couples_created_by_users_id_fk": {
+          "name": "couples_created_by_users_id_fk",
+          "tableFrom": "couples",
+          "tableTo": "users",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "goal_movements": {
+      "name": "goal_movements",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "goal_id": {
+          "name": "goal_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount_cents": {
+          "name": "amount_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "goal_movements_goal_date": {
+          "name": "goal_movements_goal_date",
+          "columns": [
+            "goal_id",
+            "date"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "goal_movements_goal_id_savings_goals_id_fk": {
+          "name": "goal_movements_goal_id_savings_goals_id_fk",
+          "tableFrom": "goal_movements",
+          "tableTo": "savings_goals",
+          "columnsFrom": [
+            "goal_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "goal_movements_owner_id_users_id_fk": {
+          "name": "goal_movements_owner_id_users_id_fk",
+          "tableFrom": "goal_movements",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "goal_movements_valid_kind": {
+          "name": "goal_movements_valid_kind",
+          "value": "\"goal_movements\".\"kind\" IN ('deposit', 'withdrawal')"
+        },
+        "goal_movements_positive_amount": {
+          "name": "goal_movements_positive_amount",
+          "value": "typeof(\"goal_movements\".\"amount_cents\") = 'integer' AND \"goal_movements\".\"amount_cents\" > 0 AND \"goal_movements\".\"amount_cents\" <= 1000000000000"
+        }
+      }
+    },
+    "import_batches": {
+      "name": "import_batches",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "files_json": {
+          "name": "files_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "count": {
+          "name": "count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "income_cents": {
+          "name": "income_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "expense_cents": {
+          "name": "expense_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "period_start": {
+          "name": "period_start",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "period_end": {
+          "name": "period_end",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "import_batches_owner_id_id": {
+          "name": "import_batches_owner_id_id",
+          "columns": [
+            "owner_id",
+            "id"
+          ],
+          "isUnique": true
+        },
+        "import_batches_owner_created_at": {
+          "name": "import_batches_owner_created_at",
+          "columns": [
+            "owner_id",
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "import_batches_owner_id_users_id_fk": {
+          "name": "import_batches_owner_id_users_id_fk",
+          "tableFrom": "import_batches",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "recurring_schedules": {
+      "name": "recurring_schedules",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "couple_id": {
+          "name": "couple_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount_cents": {
+          "name": "amount_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "frequency": {
+          "name": "frequency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "active": {
+          "name": "active",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        }
+      },
+      "indexes": {
+        "recurring_schedules_owner": {
+          "name": "recurring_schedules_owner",
+          "columns": [
+            "owner_id"
+          ],
+          "isUnique": false
+        },
+        "recurring_schedules_couple": {
+          "name": "recurring_schedules_couple",
+          "columns": [
+            "couple_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "recurring_schedules_owner_id_users_id_fk": {
+          "name": "recurring_schedules_owner_id_users_id_fk",
+          "tableFrom": "recurring_schedules",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "recurring_schedules_couple_id_couples_id_fk": {
+          "name": "recurring_schedules_couple_id_couples_id_fk",
+          "tableFrom": "recurring_schedules",
+          "tableTo": "couples",
+          "columnsFrom": [
+            "couple_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "recurring_schedules_valid_scope": {
+          "name": "recurring_schedules_valid_scope",
+          "value": "(\"recurring_schedules\".\"scope\" = 'personal' AND \"recurring_schedules\".\"couple_id\" IS NULL) OR (\"recurring_schedules\".\"scope\" = 'couple' AND \"recurring_schedules\".\"couple_id\" IS NOT NULL)"
+        },
+        "recurring_schedules_valid_kind": {
+          "name": "recurring_schedules_valid_kind",
+          "value": "\"recurring_schedules\".\"kind\" IN ('income', 'expense', 'card_payment')"
+        },
+        "recurring_schedules_valid_frequency": {
+          "name": "recurring_schedules_valid_frequency",
+          "value": "\"recurring_schedules\".\"frequency\" IN ('weekly', 'monthly', 'yearly')"
+        },
+        "recurring_schedules_positive_integer": {
+          "name": "recurring_schedules_positive_integer",
+          "value": "typeof(\"recurring_schedules\".\"amount_cents\") = 'integer' AND \"recurring_schedules\".\"amount_cents\" > 0 AND \"recurring_schedules\".\"amount_cents\" <= 1000000000000"
+        },
+        "recurring_schedules_valid_range": {
+          "name": "recurring_schedules_valid_range",
+          "value": "\"recurring_schedules\".\"end_date\" IS NULL OR \"recurring_schedules\".\"end_date\" >= \"recurring_schedules\".\"start_date\""
+        }
+      }
+    },
+    "reserve_plans": {
+      "name": "reserve_plans",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "month": {
+          "name": "month",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "minimum_balance_cents": {
+          "name": "minimum_balance_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "extra_expense_cents": {
+          "name": "extra_expense_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "card_reserve_cents": {
+          "name": "card_reserve_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "goal_reserve_cents": {
+          "name": "goal_reserve_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "shared_commitment_cents": {
+          "name": "shared_commitment_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "reserve_plans_owner_month": {
+          "name": "reserve_plans_owner_month",
+          "columns": [
+            "owner_id",
+            "month"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "reserve_plans_owner_id_users_id_fk": {
+          "name": "reserve_plans_owner_id_users_id_fk",
+          "tableFrom": "reserve_plans",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "reserve_plans_minimum_nonnegative": {
+          "name": "reserve_plans_minimum_nonnegative",
+          "value": "typeof(\"reserve_plans\".\"minimum_balance_cents\") = 'integer' AND \"reserve_plans\".\"minimum_balance_cents\" BETWEEN 0 AND 1000000000000"
+        },
+        "reserve_plans_extra_nonnegative": {
+          "name": "reserve_plans_extra_nonnegative",
+          "value": "typeof(\"reserve_plans\".\"extra_expense_cents\") = 'integer' AND \"reserve_plans\".\"extra_expense_cents\" BETWEEN 0 AND 1000000000000"
+        },
+        "reserve_plans_card_nonnegative": {
+          "name": "reserve_plans_card_nonnegative",
+          "value": "\"reserve_plans\".\"card_reserve_cents\" IS NULL OR (typeof(\"reserve_plans\".\"card_reserve_cents\") = 'integer' AND \"reserve_plans\".\"card_reserve_cents\" BETWEEN 0 AND 1000000000000)"
+        },
+        "reserve_plans_goal_nonnegative": {
+          "name": "reserve_plans_goal_nonnegative",
+          "value": "\"reserve_plans\".\"goal_reserve_cents\" IS NULL OR (typeof(\"reserve_plans\".\"goal_reserve_cents\") = 'integer' AND \"reserve_plans\".\"goal_reserve_cents\" BETWEEN 0 AND 1000000000000)"
+        },
+        "reserve_plans_shared_nonnegative": {
+          "name": "reserve_plans_shared_nonnegative",
+          "value": "\"reserve_plans\".\"shared_commitment_cents\" IS NULL OR (typeof(\"reserve_plans\".\"shared_commitment_cents\") = 'integer' AND \"reserve_plans\".\"shared_commitment_cents\" BETWEEN 0 AND 1000000000000)"
+        }
+      }
+    },
+    "savings_goals": {
+      "name": "savings_goals",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "couple_id": {
+          "name": "couple_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_cents": {
+          "name": "target_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_date": {
+          "name": "target_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "archived": {
+          "name": "archived",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        }
+      },
+      "indexes": {
+        "savings_goals_owner": {
+          "name": "savings_goals_owner",
+          "columns": [
+            "owner_id"
+          ],
+          "isUnique": false
+        },
+        "savings_goals_couple": {
+          "name": "savings_goals_couple",
+          "columns": [
+            "couple_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "savings_goals_owner_id_users_id_fk": {
+          "name": "savings_goals_owner_id_users_id_fk",
+          "tableFrom": "savings_goals",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "savings_goals_couple_id_couples_id_fk": {
+          "name": "savings_goals_couple_id_couples_id_fk",
+          "tableFrom": "savings_goals",
+          "tableTo": "couples",
+          "columnsFrom": [
+            "couple_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "savings_goals_valid_scope": {
+          "name": "savings_goals_valid_scope",
+          "value": "(\"savings_goals\".\"scope\" = 'personal' AND \"savings_goals\".\"couple_id\" IS NULL) OR (\"savings_goals\".\"scope\" = 'couple' AND \"savings_goals\".\"couple_id\" IS NOT NULL)"
+        },
+        "savings_goals_positive_target": {
+          "name": "savings_goals_positive_target",
+          "value": "typeof(\"savings_goals\".\"target_cents\") = 'integer' AND \"savings_goals\".\"target_cents\" > 0 AND \"savings_goals\".\"target_cents\" <= 1000000000000"
+        },
+        "savings_goals_valid_archived": {
+          "name": "savings_goals_valid_archived",
+          "value": "\"savings_goals\".\"archived\" IN (0, 1)"
+        }
+      }
+    },
+    "schedule_occurrences": {
+      "name": "schedule_occurrences",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "schedule_id": {
+          "name": "schedule_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "due_date": {
+          "name": "due_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "transaction_id": {
+          "name": "transaction_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "confirmed_by": {
+          "name": "confirmed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "schedule_occurrences_schedule_date": {
+          "name": "schedule_occurrences_schedule_date",
+          "columns": [
+            "schedule_id",
+            "due_date"
+          ],
+          "isUnique": true
+        },
+        "schedule_occurrences_transaction": {
+          "name": "schedule_occurrences_transaction",
+          "columns": [
+            "transaction_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "schedule_occurrences_schedule_id_recurring_schedules_id_fk": {
+          "name": "schedule_occurrences_schedule_id_recurring_schedules_id_fk",
+          "tableFrom": "schedule_occurrences",
+          "tableTo": "recurring_schedules",
+          "columnsFrom": [
+            "schedule_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "schedule_occurrences_transaction_id_transactions_id_fk": {
+          "name": "schedule_occurrences_transaction_id_transactions_id_fk",
+          "tableFrom": "schedule_occurrences",
+          "tableTo": "transactions",
+          "columnsFrom": [
+            "transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "schedule_occurrences_confirmed_by_users_id_fk": {
+          "name": "schedule_occurrences_confirmed_by_users_id_fk",
+          "tableFrom": "schedule_occurrences",
+          "tableTo": "users",
+          "columnsFrom": [
+            "confirmed_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "schedule_occurrences_valid_state": {
+          "name": "schedule_occurrences_valid_state",
+          "value": "\"schedule_occurrences\".\"state\" IN ('confirmed', 'linked', 'skipped')"
+        },
+        "schedule_occurrences_link_only": {
+          "name": "schedule_occurrences_link_only",
+          "value": "\"schedule_occurrences\".\"transaction_id\" IS NULL OR \"schedule_occurrences\".\"state\" = 'linked'"
+        }
+      }
+    },
+    "sources": {
+      "name": "sources",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "institution": {
+          "name": "institution",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "initial_balance_cents": {
+          "name": "initial_balance_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "balance_date": {
+          "name": "balance_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "has_opening_balance": {
+          "name": "has_opening_balance",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        }
+      },
+      "indexes": {
+        "sources_owner_id_id": {
+          "name": "sources_owner_id_id",
+          "columns": [
+            "owner_id",
+            "id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "sources_owner_id_users_id_fk": {
+          "name": "sources_owner_id_users_id_fk",
+          "tableFrom": "sources",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "transactions": {
+      "name": "transactions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "date": {
+          "name": "date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "amount_cents": {
+          "name": "amount_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "shared": {
+          "name": "shared",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "shared_couple_id": {
+          "name": "shared_couple_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "installment_current": {
+          "name": "installment_current",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "installment_total": {
+          "name": "installment_total",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "needs_review": {
+          "name": "needs_review",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "import_id": {
+          "name": "import_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "transactions_owner_source_fingerprint": {
+          "name": "transactions_owner_source_fingerprint",
+          "columns": [
+            "owner_id",
+            "source_id",
+            "fingerprint"
+          ],
+          "isUnique": true
+        },
+        "transactions_owner_date": {
+          "name": "transactions_owner_date",
+          "columns": [
+            "owner_id",
+            "date"
+          ],
+          "isUnique": false
+        },
+        "transactions_shared_couple": {
+          "name": "transactions_shared_couple",
+          "columns": [
+            "shared_couple_id",
+            "shared",
+            "owner_id"
+          ],
+          "isUnique": false
+        },
+        "transactions_import_owner": {
+          "name": "transactions_import_owner",
+          "columns": [
+            "import_id",
+            "owner_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "transactions_owner_id_users_id_fk": {
+          "name": "transactions_owner_id_users_id_fk",
+          "tableFrom": "transactions",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transactions_owner_id_source_id_sources_owner_id_id_fk": {
+          "name": "transactions_owner_id_source_id_sources_owner_id_id_fk",
+          "tableFrom": "transactions",
+          "tableTo": "sources",
+          "columnsFrom": [
+            "owner_id",
+            "source_id"
+          ],
+          "columnsTo": [
+            "owner_id",
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "transactions_owner_id_import_id_import_batches_owner_id_id_fk": {
+          "name": "transactions_owner_id_import_id_import_batches_owner_id_id_fk",
+          "tableFrom": "transactions",
+          "tableTo": "import_batches",
+          "columnsFrom": [
+            "owner_id",
+            "import_id"
+          ],
+          "columnsTo": [
+            "owner_id",
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "transactions_nonnegative_integer_amount": {
+          "name": "transactions_nonnegative_integer_amount",
+          "value": "typeof(\"transactions\".\"amount_cents\") = 'integer' AND \"transactions\".\"amount_cents\" >= 0"
+        }
+      }
+    },
+    "users": {
+      "name": "users",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

@@ -90,6 +90,9 @@ import { categoryKey } from "../lib/planning";
 import { ReportsView, BudgetsView } from "./features/reports-budgets";
 import { CalendarView } from "./features/calendar-view";
 import { GoalsView } from "./features/goals-view";
+import { ReserveView } from "./features/reserve-view";
+import type { ReservePlan, ReservePlanInput } from "../lib/reserve-types";
+import { validateReservePlan } from "../lib/reserve-validation";
 import type {
   GoalInput,
   GoalPatch,
@@ -118,7 +121,8 @@ type Tab =
   | "reports"
   | "budgets"
   | "calendar"
-  | "goals";
+  | "goals"
+  | "reserve";
 type Scope = "all" | "personal" | "shared" | "pending";
 type PreviewRow = DraftTransaction & {
   key: string;
@@ -162,6 +166,12 @@ const nav = [
   { id: "budgets", label: "Orçamentos", short: "Orçamentos", icon: Target },
   { id: "calendar", label: "Calendário", short: "Agenda", icon: CalendarDays },
   { id: "goals", label: "Metas e caixinhas", short: "Metas", icon: Sparkles },
+  {
+    id: "reserve",
+    label: "Quanto reservar",
+    short: "Reservar",
+    icon: Banknote,
+  },
   { id: "couple", label: "Nosso espaço", short: "Casal", icon: UsersRound },
   { id: "sources", label: "Contas e saldos", short: "Contas", icon: Wallet },
 ] as const;
@@ -220,6 +230,12 @@ const pageCopy: Record<
     title: "Cada objetivo, mais perto.",
     subtitle:
       "Organize suas reservas pessoais e do casal e acompanhe cada conquista.",
+  },
+  reserve: {
+    eyebrow: "ESPAÇO PARA O SEU FUTURO",
+    title: "Quanto cabe nos seus planos.",
+    subtitle:
+      "Uma estimativa mensal para reservar ou investir, com os valores que você já conhece.",
   },
 };
 const categoryColors = [
@@ -574,6 +590,67 @@ export default function FinanceApp({
       );
     } catch (e) {
       handleError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveReservePlan(input: ReservePlanInput) {
+    const checked = validateReservePlan(input);
+    setBusy(true);
+    try {
+      if (demo) {
+        setSample((state) => ({
+          ...state,
+          reservePlans: [
+            ...(state.reservePlans ?? []).filter(
+              (plan) => plan.month !== checked.month,
+            ),
+            { ...checked, id: crypto.randomUUID(), ownerId: state.user.id },
+          ],
+        }));
+      } else {
+        const { plan } = await request<{ plan: ReservePlan }>(
+          "/api/reserve-plans",
+          "POST",
+          checked,
+        );
+        setReal((state) => ({
+          ...state,
+          reservePlans: [
+            ...(state.reservePlans ?? []).filter(
+              (item) => item.month !== plan.month,
+            ),
+            plan,
+          ],
+        }));
+        await refresh();
+      }
+      setToast("Ajustes da estimativa salvos para este mês.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function resetReservePlan(selectedMonth: string) {
+    setBusy(true);
+    try {
+      if (demo)
+        setSample((state) => ({
+          ...state,
+          reservePlans: (state.reservePlans ?? []).filter(
+            (plan) => plan.month !== selectedMonth,
+          ),
+        }));
+      else {
+        await request(`/api/reserve-plans/${selectedMonth}`, "DELETE");
+        setReal((state) => ({
+          ...state,
+          reservePlans: (state.reservePlans ?? []).filter(
+            (plan) => plan.month !== selectedMonth,
+          ),
+        }));
+        await refresh();
+      }
+      setToast("A estimativa voltou aos valores automáticos deste mês.");
     } finally {
       setBusy(false);
     }
@@ -1896,6 +1973,17 @@ export default function FinanceApp({
                   onDelete={removeGoal}
                   onMovement={addGoalMovement}
                   onOpenCouple={() => go("couple")}
+                />
+              )}
+              {tab === "reserve" && (
+                <ReserveView
+                  key={`${demo ? "demo" : "real"}:${month}`}
+                  data={data}
+                  month={month}
+                  busy={busy}
+                  onSave={saveReservePlan}
+                  onReset={resetReservePlan}
+                  onNavigate={go}
                 />
               )}
               {tab === "transactions" && (

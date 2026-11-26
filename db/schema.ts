@@ -351,3 +351,43 @@ export const goalMovements = sqliteTable(
     ),
   ],
 );
+
+// Personal monthly assumptions for an estimate; never financial movements.
+export const reservePlans = sqliteTable(
+  "reserve_plans",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    month: text("month").notNull(),
+    minimumBalanceCents: integer("minimum_balance_cents").notNull(),
+    extraExpenseCents: integer("extra_expense_cents").notNull(),
+    cardReserveCents: integer("card_reserve_cents"),
+    goalReserveCents: integer("goal_reserve_cents"),
+    sharedCommitmentCents: integer("shared_commitment_cents"),
+  },
+  (table) => [
+    uniqueIndex("reserve_plans_owner_month").on(table.ownerId, table.month),
+    check(
+      "reserve_plans_minimum_nonnegative",
+      sql`typeof(${table.minimumBalanceCents}) = 'integer' AND ${table.minimumBalanceCents} BETWEEN 0 AND 1000000000000`,
+    ),
+    check(
+      "reserve_plans_extra_nonnegative",
+      sql`typeof(${table.extraExpenseCents}) = 'integer' AND ${table.extraExpenseCents} BETWEEN 0 AND 1000000000000`,
+    ),
+    check(
+      "reserve_plans_card_nonnegative",
+      sql`${table.cardReserveCents} IS NULL OR (typeof(${table.cardReserveCents}) = 'integer' AND ${table.cardReserveCents} BETWEEN 0 AND 1000000000000)`,
+    ),
+    check(
+      "reserve_plans_goal_nonnegative",
+      sql`${table.goalReserveCents} IS NULL OR (typeof(${table.goalReserveCents}) = 'integer' AND ${table.goalReserveCents} BETWEEN 0 AND 1000000000000)`,
+    ),
+    check(
+      "reserve_plans_shared_nonnegative",
+      sql`${table.sharedCommitmentCents} IS NULL OR (typeof(${table.sharedCommitmentCents}) = 'integer' AND ${table.sharedCommitmentCents} BETWEEN 0 AND 1000000000000)`,
+    ),
+  ],
+);

@@ -97,9 +97,11 @@ export function transactionFingerprint(row: DraftTransaction, occurrence = 1): s
 
 function classify(description: string, signedCents: number, sourceType: SourceType, direction?: "in" | "out"): TransactionKind {
   const text = normalize(description);
-  if (/estorno|reembolso|\brefund\b|devolucao/.test(text)) return "refund";
-  if (/pagamento (?:d[aeo] )?(?:fatura|cartao)|pag(?:to|amento)\.?\s*(?:de )?fatura|liquidacao (?:de )?fatura/.test(text) || (sourceType === "credit" && /pagamento recebido|pagamento efetuado|payment received|payment thank/.test(text))) return "card_payment";
   const incoming = direction === "in" || (direction !== "out" && signedCents > 0);
+  // A refund label on money sent back is still an outgoing movement. Credit
+  // exports may use negative refunds or an explicit incoming type instead.
+  if (/estorno|reembolso|\brefund\b|devolucao/.test(text) && (sourceType === "credit" ? direction !== "out" : incoming)) return "refund";
+  if (/pagamento (?:d[aeo] )?(?:fatura|cartao)|pag(?:to|amento)\.?\s*(?:de )?fatura|liquidacao (?:de )?fatura/.test(text) || (sourceType === "credit" && /pagamento recebido|pagamento efetuado|payment received|payment thank/.test(text))) return "card_payment";
   if (/mesma titularidade|entre (?:as )?(?:minhas|suas|proprias) contas|transferencia interna|(?:para|da|de) (?:a )?(?:minha|sua|propria) conta/.test(text)) return incoming ? "transfer_in" : "transfer_out";
   if (sourceType === "credit") return direction ? (direction === "in" ? "refund" : "expense") : signedCents < 0 ? "refund" : "expense";
   return incoming ? "income" : "expense";

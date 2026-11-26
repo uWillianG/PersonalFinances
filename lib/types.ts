@@ -4,6 +4,7 @@ import type {
   ScheduleOccurrence,
 } from "./planning-types";
 import type { SavingsGoal, GoalMovement } from "./goals-types";
+import type { ReservePlan } from "./reserve-types";
 export type SourceType = "bank" | "credit" | "benefit";
 export type TransactionKind =
   | "income"
@@ -83,6 +84,7 @@ export interface AppState {
   occurrences?: ScheduleOccurrence[];
   goals?: SavingsGoal[];
   goalMovements?: GoalMovement[];
+  reservePlans?: ReservePlan[];
 }
 export interface CategoryRule {
   id: string;
