@@ -50,7 +50,9 @@ export function transactionsForMonth(
   month: string,
 ): Transaction[] {
   monthIndex(month);
-  return transactions.filter((transaction) => transaction.date.slice(0, 7) === month);
+  return transactions.filter(
+    (transaction) => transaction.date.slice(0, 7) === month,
+  );
 }
 
 export function summarize(transactions: readonly Transaction[], month: string) {
@@ -96,24 +98,28 @@ export function balancesForMonth(
   complete: boolean;
 } {
   const exclusiveEnd = `${shiftMonth(month, 1)}-01`;
-  const items = sources.filter((source) => source.type !== "credit").map((source) => {
-    const hasBalanceDate = /^\d{4}-\d{2}-\d{2}$/.test(source.balanceDate);
-    const beforeOpeningDate = hasBalanceDate && source.balanceDate > exclusiveEnd;
-    const complete = source.hasOpeningBalance && hasBalanceDate && !beforeOpeningDate;
-    // A reference at the next month's first day also describes this month's
-    // closing balance, before any movements on that next day.
-    let balanceCents = complete ? source.initialBalanceCents : 0;
-    for (const transaction of transactions) {
-      if (
-        transaction.sourceId === source.id &&
-        transaction.date < exclusiveEnd &&
-        (!hasBalanceDate || transaction.date >= source.balanceDate)
-      ) {
-        balanceCents += balanceMovement(transaction);
+  const items = sources
+    .filter((source) => source.type !== "credit")
+    .map((source) => {
+      const hasBalanceDate = /^\d{4}-\d{2}-\d{2}$/.test(source.balanceDate);
+      const beforeOpeningDate =
+        hasBalanceDate && source.balanceDate > exclusiveEnd;
+      const complete =
+        source.hasOpeningBalance && hasBalanceDate && !beforeOpeningDate;
+      // A reference at the next month's first day also describes this month's
+      // closing balance, before any movements on that next day.
+      let balanceCents = complete ? source.initialBalanceCents : 0;
+      for (const transaction of transactions) {
+        if (
+          transaction.sourceId === source.id &&
+          transaction.date < exclusiveEnd &&
+          (!hasBalanceDate || transaction.date >= source.balanceDate)
+        ) {
+          balanceCents += balanceMovement(transaction);
+        }
       }
-    }
-    return { source, balanceCents, complete };
-  });
+      return { source, balanceCents, complete };
+    });
   return {
     totalCents: items.reduce((total, item) => total + item.balanceCents, 0),
     items,
@@ -121,29 +127,56 @@ export function balancesForMonth(
   };
 }
 
-export function categoryBreakdown(transactions: readonly Transaction[], month: string) {
-  const categories = new Map<string, { category: string; amountCents: number; count: number }>();
+export function categoryBreakdown(
+  transactions: readonly Transaction[],
+  month: string,
+) {
+  const categories = new Map<
+    string,
+    { category: string; amountCents: number; count: number }
+  >();
   for (const transaction of transactionsForMonth(transactions, month)) {
-    if (transaction.kind !== "expense" && transaction.kind !== "refund") continue;
+    if (transaction.kind !== "expense" && transaction.kind !== "refund")
+      continue;
     const category = transaction.category || "Outros";
-    const item = categories.get(category) ?? { category, amountCents: 0, count: 0 };
-    item.amountCents += transaction.kind === "refund" ? -transaction.amountCents : transaction.amountCents;
+    const item = categories.get(category) ?? {
+      category,
+      amountCents: 0,
+      count: 0,
+    };
+    item.amountCents +=
+      transaction.kind === "refund"
+        ? -transaction.amountCents
+        : transaction.amountCents;
     item.count += 1;
     categories.set(category, item);
   }
   return [...categories.values()]
     .filter((item) => item.amountCents !== 0)
-    .sort((a, b) => b.amountCents - a.amountCents || a.category.localeCompare(b.category, "pt-BR"));
+    .sort(
+      (a, b) =>
+        b.amountCents - a.amountCents ||
+        a.category.localeCompare(b.category, "pt-BR"),
+    );
 }
 
-export function monthlySeries(transactions: readonly Transaction[], month: string, months = 6) {
+export function monthlySeries(
+  transactions: readonly Transaction[],
+  month: string,
+  months = 6,
+) {
   monthIndex(month);
   if (!Number.isInteger(months) || months < 0) {
-    throw new RangeError("A quantidade de meses deve ser um inteiro não negativo.");
+    throw new RangeError(
+      "A quantidade de meses deve ser um inteiro não negativo.",
+    );
   }
   return Array.from({ length: months }, (_, index) => {
     const selectedMonth = shiftMonth(month, index - months + 1);
-    const { incomeCents, expenseCents } = summarize(transactions, selectedMonth);
+    const { incomeCents, expenseCents } = summarize(
+      transactions,
+      selectedMonth,
+    );
     return { month: selectedMonth, incomeCents, expenseCents };
   });
 }
@@ -153,32 +186,45 @@ function installmentMerchant(transaction: Transaction): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase("pt-BR")
-    .replace(/\b(?:parcela(?:do)?|parc\.?)[\s.:#-]*\d{1,3}\s*(?:\/|de)\s*\d{1,3}\b/g, " ")
-    .replace(/\b(\d{1,3})\s*\/\s*(\d{1,3})\b/g, (match, current, total) => (
-      Number(current) === transaction.installmentCurrent && Number(total) === transaction.installmentTotal ? " " : match
-    ))
+    .replace(
+      /\b(?:parcela(?:do)?|parc\.?)[\s.:#-]*\d{1,3}\s*(?:\/|de)\s*\d{1,3}\b/g,
+      " ",
+    )
+    .replace(/\b(\d{1,3})\s*\/\s*(\d{1,3})\b/g, (match, current, total) =>
+      Number(current) === transaction.installmentCurrent &&
+      Number(total) === transaction.installmentTotal
+        ? " "
+        : match,
+    )
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
 
-export function installmentForecast(transactions: readonly Transaction[], month: string) {
-  const selectedIndex = monthIndex(month);
-  const forecast = Array.from({ length: 6 }, (_, index) => ({
-    month: monthAt(selectedIndex + index + 1),
-    amountCents: 0,
-  }));
-  const purchases = new Map<string, {
-    startIndex: number; total: number; amountCents: number; counts: Map<number, number>;
-  }>();
+function installmentPurchases(transactions: readonly Transaction[]) {
+  const purchases = new Map<
+    string,
+    {
+      startIndex: number;
+      total: number;
+      amountCents: number;
+      counts: Map<number, number>;
+      latest: Transaction;
+    }
+  >();
   for (const transaction of transactions) {
     const current = transaction.installmentCurrent;
     const total = transaction.installmentTotal;
     if (
       transaction.kind !== "expense" ||
-      current === null || total === null ||
-      !Number.isInteger(current) || !Number.isInteger(total) ||
-      current < 1 || total < 2 || current > total
-    ) continue;
+      current === null ||
+      total === null ||
+      !Number.isInteger(current) ||
+      !Number.isInteger(total) ||
+      current < 1 ||
+      total < 2 ||
+      current > total
+    )
+      continue;
     const startIndex = monthIndex(transaction.date.slice(0, 7)) - current + 1;
     const key = JSON.stringify([
       transaction.sourceId,
@@ -188,11 +234,62 @@ export function installmentForecast(transactions: readonly Transaction[], month:
       startIndex,
     ]);
     const purchase = purchases.get(key) ?? {
-      startIndex, total, amountCents: transaction.amountCents, counts: new Map<number, number>(),
+      startIndex,
+      total,
+      amountCents: transaction.amountCents,
+      counts: new Map<number, number>(),
+      latest: transaction,
     };
     purchase.counts.set(current, (purchase.counts.get(current) ?? 0) + 1);
+    if (
+      transaction.date > purchase.latest.date ||
+      (transaction.date === purchase.latest.date &&
+        transaction.id > purchase.latest.id)
+    )
+      purchase.latest = transaction;
     purchases.set(key, purchase);
   }
+  return purchases;
+}
+
+/** Identify absent billed installments before attributing their current category
+ * or sharing scope. Editing either property must not create another purchase. */
+export function missingInstallmentForecast(
+  transactions: readonly Transaction[],
+  month: string,
+): { transaction: Transaction; amountCents: number; quantity: number }[] {
+  const selectedIndex = monthIndex(month);
+  const result: {
+    transaction: Transaction;
+    amountCents: number;
+    quantity: number;
+  }[] = [];
+  for (const purchase of installmentPurchases(transactions).values()) {
+    const current = selectedIndex - purchase.startIndex + 1;
+    if (current < 1 || current > purchase.total) continue;
+    const quantity =
+      Math.max(...purchase.counts.values()) -
+      (purchase.counts.get(current) ?? 0);
+    if (quantity > 0)
+      result.push({
+        transaction: purchase.latest,
+        amountCents: purchase.amountCents * quantity,
+        quantity,
+      });
+  }
+  return result;
+}
+
+export function installmentForecast(
+  transactions: readonly Transaction[],
+  month: string,
+) {
+  const selectedIndex = monthIndex(month);
+  const forecast = Array.from({ length: 6 }, (_, index) => ({
+    month: monthAt(selectedIndex + index + 1),
+    amountCents: 0,
+  }));
+  const purchases = installmentPurchases(transactions);
   for (const purchase of purchases.values()) {
     // Different installments identify one schedule; multiple real rows at the
     // same installment number identify multiple otherwise identical purchases.

@@ -7,13 +7,17 @@ export interface ParseResult { rows: DraftTransaction[]; warnings: string[]; bal
 
 const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[_\s]+/g, " ").trim();
 const headerKey = (value: string) => normalize(value).replace(/\(?(?:r\$|brl|usd)\)?/g, "").replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+const currencyToken = "(?:R\\$|BRL|USD|US\\$|EUR|€|GBP|£|JPY|¥|CAD|AUD|NZD|CHF|CNY|ARS|CLP|COP|MXN|PEN|UYU|PYG|BOB|VES)";
+const foreignCurrency = /USD|US\$|EUR|€|GBP|£|JPY|¥|CAD|AUD|NZD|CHF|CNY|ARS|CLP|COP|MXN|PEN|UYU|PYG|BOB|VES/i;
+const brlHeader = (value: string) => /\bbrl\b|r\$|\breais\b|\breal\b/.test(normalize(value));
+const brlCurrency = (value: string) => /^(?:brl|r\$|reais|real|986)$/.test(normalize(value).replace(/\s/g, ""));
 
 /** Signed integer cents. Null means an invalid or ambiguous amount, never zero by default. */
 export function parseAmountToCents(value: string | number): number | null {
   if (typeof value === "number") return Number.isFinite(value) && Number.isSafeInteger(Math.round(value * 100)) ? Math.round(value * 100) : null;
   let raw = value.trim().replace(/\u00a0/g, " ");
   if (!raw) return null;
-  const negative = /^\(.*\)$/.test(raw) || /-/.test(raw) || /\bD$/i.test(raw);
+  const negative = /^\(.*\)$/.test(raw) || /-/.test(raw) || /D$/i.test(raw);
   raw = raw.replace(/^\((.*)\)$/, "$1").replace(/(?:R\$|BRL|USD|US\$|\$|€)/gi, "").replace(/\s*[CD]\s*$/i, "").replace(/\s/g, "");
   if (!/^[+-]?[\d.,]+[+-]?$/.test(raw)) return null;
   raw = raw.replace(/[+-]/g, "");
@@ -116,7 +120,11 @@ function makeRow(date: string, description: string, signedCents: number, options
   if (!description || summaryDescription(description) || signedCents === 0) return null;
   const kind = classify(description, signedCents, options.sourceType, direction);
   const category = options.sourceType === "benefit" && kind === "income" ? { category: "Benefícios", needsReview: true } : categorize(description, kind);
-  const match = (installments || description).match(/(?:parcela\s*)?\b(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\b/i);
+  const installmentPattern = /\b(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\b/i;
+  const labelledInstallment = description.match(/\b(?:parcela(?:d[oa]|mento)?|parc\.?)[\s.:#-]*(?:de\s+)?(\d{1,2})\s*(?:\/|de)\s*(\d{1,2})\b/i);
+  // A day/month in a bank or benefit memo is not evidence of an installment.
+  // Card exports commonly omit the label, while a dedicated column is explicit.
+  const match = installments?.trim() ? installments.match(installmentPattern) : labelledInstallment ?? (options.sourceType === "credit" ? description.match(installmentPattern) : null);
   const validInstallment = match && Number(match[1]) >= 1 && Number(match[2]) > 1 && Number(match[1]) <= Number(match[2]) && Number(match[2]) <= 99;
   return { date, description, amountCents: Math.abs(signedCents), kind, ...category, installmentCurrent: validInstallment ? Number(match[1]) : null, installmentTotal: validInstallment ? Number(match[2]) : null, ...(externalId?.trim() ? { externalId: externalId.trim() } : {}), fileName: options.fileName, fingerprint: "" };
 }
@@ -139,12 +147,13 @@ function csvRecords(text: string, delimiter: string): string[][] {
 const aliases = {
   date: ["data", "date", "data transacao", "data da transacao", "data de transacao", "data da compra", "data compra", "data lancamento", "data do lancamento", "data de lancamento", "data movimentacao", "data de movimentacao", "release date", "transaction date", "posted date", "dtposted"],
   description: ["descricao", "descricao da transacao", "description", "title", "titulo", "historico", "lancamento", "transacao", "movimentacao", "nome", "estabelecimento", "memo", "transaction type", "tipo de transacao", "detalhes"],
-  amount: ["valor", "amount", "valor r", "valor da transacao", "valor transacao", "valor liquido", "transaction net amount", "transaction amount", "valor movimentacao", "valor da movimentacao"],
+  amount: ["valor", "amount", "valor r", "valor em", "valor em reais", "valor reais", "amount in", "valor da transacao", "valor transacao", "valor liquido", "transaction net amount", "transaction amount", "valor movimentacao", "valor da movimentacao"],
   credit: ["credito", "credit", "creditos", "entrada", "entradas", "valor credito", "valor de credito"],
   debit: ["debito", "debit", "debitos", "saida", "saidas", "valor debito", "valor de debito"],
   id: ["id", "identificador", "identificador da transacao", "id da transacao", "transaction id", "reference id", "referencia", "fitid", "documento"],
   installments: ["parcela", "parcelas", "parcelamento", "installment", "installments"],
   direction: ["tipo", "type", "natureza", "tipo de movimento", "tipo movimentacao", "credito debito", "c d", "dc"],
+  currency: ["moeda", "currency", "currency code", "codigo moeda", "codigo da moeda", "moeda da transacao", "moeda transacao"],
 };
 type Columns = Record<keyof typeof aliases, number>;
 function columnsFor(record: string[]): Columns {
@@ -164,19 +173,35 @@ function parseCsv(text: string, options: ParseOptions): ParseResult | null {
     if (index >= 0) { candidate = { records, index, columns: columnsFor(records[index]) }; break; }
   }
   if (!candidate) return null;
-  const { records, index, columns } = candidate; const rows: DraftTransaction[] = []; let rejected = 0, inferredYear = false;
+  const { records, index, columns } = candidate; const rows: DraftTransaction[] = []; let rejected = 0, foreignRejected = 0, inferredYear = false;
+  const headers = records[index];
+  const brlAmounts = headers.map((header, i) => ({ header, i })).filter(({ header }) => brlHeader(header) && aliases.amount.includes(headerKey(header)));
+  const brlNetAmounts = brlAmounts.filter(({ header }) => /valor liquido|transaction net amount/.test(headerKey(header)));
+  const explicitBrlAmount = brlNetAmounts.length === 1 ? brlNetAmounts[0].i : brlAmounts.length === 1 ? brlAmounts[0].i : -1;
+  const ambiguousBrlAmounts = brlAmounts.length > 1 && explicitBrlAmount < 0;
+  if (explicitBrlAmount >= 0) columns.amount = explicitBrlAmount;
   for (const record of records.slice(index + 1)) {
     const description = record[columns.description] || "";
     if (summaryDescription(description) || usableColumns(columnsFor(record))) continue;
     const rawDate = record[columns.date] || "", date = parseDate(rawDate, options.referenceMonth);
     if (!date) { if (record.some(cell => cell.trim())) rejected++; continue; }
-    let amount: number | null = null, direction: "in" | "out" | undefined;
-    const credit = columns.credit >= 0 ? parseAmountToCents(record[columns.credit] || "") : null;
-    const debit = columns.debit >= 0 ? parseAmountToCents(record[columns.debit] || "") : null;
+    let amount: number | null = null, direction: "in" | "out" | undefined, selectedColumn = -1;
+    const rawCredit = columns.credit >= 0 ? (record[columns.credit] || "").trim() : "";
+    const rawDebit = columns.debit >= 0 ? (record[columns.debit] || "").trim() : "";
+    const credit = rawCredit ? parseAmountToCents(rawCredit) : null;
+    const debit = rawDebit ? parseAmountToCents(rawDebit) : null;
+    if (ambiguousBrlAmounts || (rawCredit && credit === null) || (rawDebit && debit === null)) { rejected++; continue; }
     if (credit && debit) { rejected++; continue; }
-    if (debit) { amount = -Math.abs(debit); direction = "out"; }
-    else if (credit) { amount = Math.abs(credit); direction = "in"; }
-    else if (columns.amount >= 0) amount = parseAmountToCents(record[columns.amount] || "");
+    if (debit) direction = "out";
+    else if (credit) direction = "in";
+    if (explicitBrlAmount >= 0) { selectedColumn = explicitBrlAmount; amount = parseAmountToCents(record[selectedColumn] || ""); }
+    else if (debit) { selectedColumn = columns.debit; amount = -Math.abs(debit); }
+    else if (credit) { selectedColumn = columns.credit; amount = Math.abs(credit); }
+    else if (columns.amount >= 0) { selectedColumn = columns.amount; amount = parseAmountToCents(record[selectedColumn] || ""); }
+    const rawAmount = selectedColumn >= 0 ? record[selectedColumn] || "" : "";
+    const currency = columns.currency >= 0 ? (record[columns.currency] || "").trim() : "";
+    const selectedBrl = selectedColumn >= 0 && (brlHeader(headers[selectedColumn]) || /BRL|R\$/i.test(rawAmount));
+    if (foreignCurrency.test(rawAmount) || (selectedColumn >= 0 && foreignCurrency.test(headers[selectedColumn])) || (currency && !brlCurrency(currency) && !selectedBrl)) { rejected++; foreignRejected++; continue; }
     const movement = normalize(record[columns.direction] || "");
     if (/^(?:d|debito|saida|expense|despesa)$/.test(movement)) direction = "out";
     if (/^(?:c|credito|entrada|income|receita|beneficio)$/.test(movement)) direction = "in";
@@ -189,7 +214,7 @@ function parseCsv(text: string, options: ParseOptions): ParseResult | null {
       rows.push(row);
     }
   }
-  return { rows, warnings: [...(rejected ? [`${rejected} linha(s) do CSV foram ignoradas por dados incompletos, ambíguos ou inválidos.`] : []), ...(inferredYear ? ["Algumas datas não tinham ano; foi usado o mês de referência. Confira o período."] : [])] };
+  return { rows, warnings: [...(rejected ? [`${rejected} linha(s) do CSV foram ignoradas por dados incompletos, ambíguos ou inválidos.`] : []), ...(foreignRejected ? [`${foreignRejected} linha(s) com moeda diferente de real não foram importadas. Use valores já convertidos para BRL; o sistema não faz conversão de câmbio.`] : []), ...(inferredYear ? ["Algumas datas não tinham ano; foi usado o mês de referência. Confira o período."] : [])] };
 }
 
 function decodeEntities(value: string): string { return value.replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&apos;/gi, "'").replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(Number(n))); }
@@ -212,7 +237,7 @@ function parseOfx(text: string, options: ParseOptions): ParseResult {
 }
 
 function parseExtractedText(text: string, options: ParseOptions): ParseResult {
-  const rows: DraftTransaction[] = []; let rejected = 0, inferredYear = false, hasBalanceColumn = false;
+  const rows: DraftTransaction[] = []; let rejected = 0, foreignRejected = 0, inferredYear = false, hasBalanceColumn = false;
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   let reference = options.referenceMonth;
   for (const line of lines.slice(0, 35)) {
@@ -229,10 +254,11 @@ function parseExtractedText(text: string, options: ParseOptions): ParseResult {
     const date = parseDate(dated[1], reference); if (!date) { rejected++; continue; }
     const remainder = dated[2];
     // Require a decimal part: merchant IDs, installment counts and integer balances are not amounts.
-    const money = [...remainder.matchAll(/(?:\(\s*)?[+-]?\s*(?:R\$\s*)?(?:\d{1,3}(?:[.,]\d{3})+|\d+)[.,]\d{2}(?:\s*[CD]\b)?(?:\s*\))?(?!\d)/gi)];
+    const money = [...remainder.matchAll(new RegExp(String.raw`(?:\(\s*)?[+-]?\s*(?:${currencyToken}\s*)?(?:\d{1,3}(?:[.,]\d{3})+|\d+)[.,]\d{2}(?:\s*${currencyToken})?(?:\s*[CD]\b)?(?:\s*\))?(?!\d)`, "gi"))];
     if (!money.length) continue;
     const chosen = hasBalanceColumn && money.length === 2 ? money[0] : money.length === 1 ? money[0] : null;
     if (!chosen || chosen.index === undefined) { rejected++; continue; }
+    if (foreignCurrency.test(chosen[0])) { rejected++; foreignRejected++; continue; }
     const amount = parseAmountToCents(chosen[0]);
     const description = remainder.slice(0, chosen.index).trim().replace(/\s+[CD]$/i, "");
     if (!description || summaryDescription(description) || !/[A-Za-zÀ-ÿ]{2}/.test(description) || amount === null) { rejected++; continue; }
@@ -242,7 +268,7 @@ function parseExtractedText(text: string, options: ParseOptions): ParseResult {
     const row = makeRow(date, description, amount, options, direction);
     if (row) { row.needsReview = true; if (!parseDate(dated[1])) inferredYear = true; rows.push(row); }
   }
-  return { rows, warnings: ["Dados extraídos de PDF ou imagem precisam de conferência: o layout e o reconhecimento de texto podem alterar descrições, valores e direção dos movimentos.", ...(inferredYear ? ["Datas sem ano foram completadas com o período do documento ou mês de referência; confira a virada do ano."] : []), ...(rejected ? [`${rejected} linha(s) foram ignoradas por datas inválidas ou valores/colunas ambíguos.`] : [])] };
+  return { rows, warnings: ["Dados extraídos de PDF ou imagem precisam de conferência: o layout e o reconhecimento de texto podem alterar descrições, valores e direção dos movimentos.", ...(inferredYear ? ["Datas sem ano foram completadas com o período do documento ou mês de referência; confira a virada do ano."] : []), ...(rejected ? [`${rejected} linha(s) foram ignoradas por datas inválidas ou valores/colunas ambíguos.`] : []), ...(foreignRejected ? ["Valores explicitamente em outra moeda não foram importados como reais. Use valores já convertidos para BRL; o sistema não faz conversão de câmbio."] : [])] };
 }
 
 /** Only suggest balances with an explicit date and one unambiguous amount. */
@@ -266,8 +292,8 @@ function statementBalance(text: string): { balance?: StatementBalance; warnings:
       if (dateMatches.length !== 1) { invalid = true; continue; }
       const date = parseDate(dateMatches[0][0]);
       const remaining = line.replace(dateMatches[0][0], " ").replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ");
-      const amounts = [...remaining.matchAll(/(?:\(\s*)?[+-]?\s*(?:R\$\s*)?(?:\d{1,3}(?:[.,]\d{3})+|\d+)(?:[.,]\d{1,2})?(?:\s*[CD]\b)?(?:\s*\))?(?!\d)/gi)];
-      const amountCents = amounts.length === 1 ? parseAmountToCents(amounts[0][0]) : null;
+      const amounts = [...remaining.matchAll(new RegExp(String.raw`(?:\(\s*)?[+-]?\s*(?:${currencyToken}\s*)?(?:\d{1,3}(?:[.,]\d{3})+|\d+)(?:[.,]\d{1,2})?(?:\s*${currencyToken})?(?:\s*[CD]\b)?(?:\s*\))?(?!\d)`, "gi"))];
+      const amountCents = amounts.length === 1 && !foreignCurrency.test(amounts[0][0]) ? parseAmountToCents(amounts[0][0]) : null;
       if (!date || amountCents === null) { invalid = true; continue; }
       candidates.push({ amountCents, date, basis: label[1] === "final" ? "closing" : "opening" });
     }
@@ -283,7 +309,11 @@ export function parseStatement(text: string, options: ParseOptions): ParseResult
   text = text.replace(/^\uFEFF/, "");
   if (!text.trim()) return { rows: [], warnings: ["O arquivo não contém texto legível."] };
   let result: ParseResult;
-  if (/<(?:OFX|STMTTRN)\b/i.test(text)) result = parseOfx(text, options);
+  if (/<(?:OFX|STMTTRN)\b/i.test(text)) {
+    const currencies = [...text.matchAll(/<CURDEF\b[^>]*>\s*([^<\r\n]+)/gi)].map((match) => match[1].trim());
+    if (currencies.some((currency) => currency && !brlCurrency(currency))) return { rows: [], warnings: ["O OFX declara uma moeda diferente de real e não foi importado. Exporte valores em BRL; o sistema não faz conversão de câmbio."] };
+    result = parseOfx(text, options);
+  }
   else if (/\.ofx$/i.test(options.fileName)) result = { rows: [], warnings: ["O arquivo OFX não contém lançamentos STMTTRN reconhecíveis."] };
   else {
     const csv = parseCsv(text, options);

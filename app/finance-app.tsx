@@ -93,6 +93,12 @@ import { GoalsView } from "./features/goals-view";
 import { ReserveView } from "./features/reserve-view";
 import type { ReservePlan, ReservePlanInput } from "../lib/reserve-types";
 import { validateReservePlan } from "../lib/reserve-validation";
+import {
+  mergeMutationResult,
+  readApiJson,
+  readAppState,
+} from "../lib/client-state";
+import { moneyInputCents } from "../lib/money-input";
 import { InvoicesView } from "./features/invoices-view";
 import type {
   CardCycle,
@@ -127,6 +133,7 @@ import {
   validateGoalMovement,
 } from "../lib/goals-validation";
 import { categoryRuleKey } from "../lib/category-rules";
+import { mapBillingRows } from "../lib/billing-import";
 import {
   fingerprintOccurrence,
   transactionFingerprint,
@@ -316,13 +323,7 @@ function shiftMonth(month: string, delta: number) {
   return new Date(Date.UTC(y, m - 1 + delta, 1)).toISOString().slice(0, 7);
 }
 function moneyInput(value: string) {
-  const s = value.trim().replace(/R\$\s?/g, "");
-  const normalized = s.includes(",")
-    ? s.replace(/\./g, "").replace(",", ".")
-    : s;
-  const n = Number(normalized);
-  if (!Number.isFinite(n)) throw new Error("Informe um valor válido.");
-  return Math.round(n * 100);
+  return moneyInputCents(value);
 }
 function csvCell(value: string | number) {
   let s = String(value);
@@ -353,7 +354,7 @@ function downloadCSV(rows: Transaction[]) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-async function request<T>(
+async function fetchJson<T>(
   path: string,
   method = "GET",
   body?: unknown,
@@ -363,16 +364,7 @@ async function request<T>(
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  const data: unknown = await res
-    .json()
-    .catch(() => ({ error: "Não foi possível ler a resposta do servidor." }));
-  if (!res.ok) {
-    const error =
-      data && typeof data === "object" && "error" in data
-        ? String(data.error)
-        : "Não foi possível concluir a operação.";
-    throw new Error(error);
-  }
+  const data = readApiJson(await res.text(), res.ok);
   return data as T;
 }
 
@@ -425,17 +417,44 @@ export default function FinanceApp({
   const [invite, setInvite] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
+  const refreshSequence = useRef(0);
+  const dataEpoch = useRef(0);
+  async function request<T>(
+    path: string,
+    method = "GET",
+    body?: unknown,
+  ): Promise<T> {
+    const writes = method !== "GET" && method !== "HEAD";
+    if (writes) dataEpoch.current += 1;
+    try {
+      const result = await fetchJson<T>(path, method, body);
+      if (writes) {
+        dataEpoch.current += 1;
+        setReal((state) =>
+          mergeMutationResult(state, path, method, result, body),
+        );
+      }
+      return result;
+    } catch (error) {
+      if (writes) dataEpoch.current += 1;
+      throw error;
+    }
+  }
   const data = demo ? sample : real;
   const refresh = useCallback(async () => {
     if (!signedIn) return;
+    const sequence = ++refreshSequence.current;
+    const epoch = dataEpoch.current;
     setLoadError("");
     try {
-      const state = await request<AppState>("/api/state");
-      setReal(state);
+      const state = readAppState(await fetchJson<unknown>("/api/state"));
+      if (sequence === refreshSequence.current && epoch === dataEpoch.current)
+        setReal(state);
     } catch (e) {
-      setLoadError((e as Error).message);
+      if (sequence === refreshSequence.current && epoch === dataEpoch.current)
+        setLoadError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (sequence === refreshSequence.current) setLoading(false);
     }
   }, [signedIn]);
   useEffect(() => {
@@ -454,6 +473,22 @@ export default function FinanceApp({
   useEffect(() => {
     setSelected(new Set());
   }, [month, scope, sourceFilter, search]);
+  useEffect(() => {
+    setSearch("");
+    setCategoryFilter("");
+    setSourceFilter("");
+    setScope("all");
+    setSelected(new Set());
+    setFiles([]);
+    setPreview([]);
+    setWarnings([]);
+    setBalanceSuggestions([]);
+    setImportResult(null);
+    setSourceEditor(false);
+    setTxEditor(null);
+    setUndo(null);
+    setBalanceOpen(false);
+  }, [demo]);
   const summary = summarize(data.transactions, month);
   const previous = summarize(data.transactions, shiftMonth(month, -1));
   const balance = balancesForMonth(data.sources, data.transactions, month);
@@ -1467,7 +1502,11 @@ export default function FinanceApp({
             else if (date < detectedBalances[previous].date)
               detectedBalances[previous] = suggestion;
           }
-          for (const [i, raw] of result.rows.entries()) {
+          const parsedRows =
+            source.type === "credit"
+              ? mapBillingRows(result.rows, entry.referenceMonth)
+              : result.rows;
+          for (const [i, raw] of parsedRows.entries()) {
             let row = { ...raw };
             const savedRule = (data.rules ?? []).find(
               (rule) => rule.key === categoryRuleKey(row.description),
@@ -1480,18 +1519,6 @@ export default function FinanceApp({
                   ? row.needsReview
                   : false,
               };
-            if (source.type === "credit") {
-              const day = Number(row.date.slice(-2));
-              const [y, m] = entry.referenceMonth.split("-").map(Number);
-              const d = Math.min(day, new Date(Date.UTC(y, m, 0)).getUTCDate());
-              const billingDate = `${entry.referenceMonth}-${String(d).padStart(2, "0")}`;
-              if (billingDate !== row.date)
-                row = {
-                  ...row,
-                  date: billingDate,
-                  note: `Data informada no arquivo: ${row.date}. Competência da fatura: ${entry.referenceMonth}.`,
-                };
-            }
             row.fingerprint = transactionFingerprint(
               row,
               fingerprintOccurrence(raw.fingerprint) ?? 1,
@@ -3686,6 +3713,8 @@ function Modal({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
     const previous = document.activeElement as HTMLElement;
     const overflow = document.body.style.overflow;
@@ -3698,7 +3727,7 @@ function Modal({
       );
     focusables()[0]?.focus();
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") close.current();
       if (e.key === "Tab") {
         const els = focusables(),
           first = els[0],

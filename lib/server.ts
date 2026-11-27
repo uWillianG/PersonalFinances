@@ -13,6 +13,10 @@ import {
   users,
 } from "@/db/schema";
 import { categoryRuleKey } from "./category-rules";
+import {
+  CLEAR_COUPLE_SHARING_SQL,
+  DELETE_COUPLE_SQL,
+} from "./couple-statements";
 import { getPlanningState } from "./planning-server";
 import { getGoalsState } from "./goals-server";
 import { getReserveState } from "./reserve-server";
@@ -21,6 +25,7 @@ import {
   ensureTransactionPaymentAllowed,
 } from "./invoice-server";
 import { ensureSourceTypeAllowed } from "./invoice-server";
+import { invoicePaymentEditGuard } from "./invoice-edit-guard";
 import {
   APPLY_IMPORT_BALANCE_SQL,
   COUNT_IMPORT_BALANCES_SQL,
@@ -28,7 +33,7 @@ import {
   RESTORE_IMPORT_BALANCES_SQL,
   SAVE_IMPORT_BALANCE_SQL,
 } from "./import-balance-statements";
-import type { AppState, ImportBatch, Transaction } from "@/lib/types";
+import type { AppState, ImportBatch, Source, Transaction } from "@/lib/types";
 import {
   IMPORT_TRANSACTIONS_SQL,
   JOIN_COUPLE_SQL,
@@ -464,7 +469,65 @@ export async function createImport(context: Context, request: Request) {
   const imported = result
     .slice(1, 1 + Math.ceil(items.length / 50))
     .reduce((total, item) => total + item.meta.changes, 0);
-  return { imported, duplicates: items.length - imported, batchId };
+  const [batchRows, importedRows, ownSourceRows] = await Promise.all([
+    context.db
+      .select()
+      .from(importBatches)
+      .where(
+        and(eq(importBatches.id, batchId), eq(importBatches.ownerId, ownerId)),
+      )
+      .limit(1),
+    context.db
+      .select()
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.importId, batchId),
+          eq(transactions.ownerId, ownerId),
+        ),
+      )
+      .orderBy(desc(transactions.date), desc(transactions.id)),
+    balanceUpdates.length
+      ? context.db.select().from(sources).where(eq(sources.ownerId, ownerId))
+      : Promise.resolve([]),
+  ]);
+  const savedBatch = batchRows[0];
+  if (!savedBatch)
+    throw new ApiError(
+      409,
+      "O lote foi removido durante a importação. Atualize a página e confira seu histórico.",
+    );
+  const batch: ImportBatch = {
+    id: savedBatch.id,
+    createdAt: savedBatch.createdAt,
+    files: JSON.parse(savedBatch.filesJson) as string[],
+    count: savedBatch.count,
+    incomeCents: savedBatch.incomeCents,
+    expenseCents: savedBatch.expenseCents,
+    periodStart: savedBatch.periodStart,
+    periodEnd: savedBatch.periodEnd,
+    balanceTracking: savedBatch.balanceTracking,
+  };
+  const affectedSourceIds = new Set(
+    balanceUpdates.map((update) => update.sourceId),
+  );
+  const affectedSources: Source[] = ownSourceRows.filter((source) =>
+    affectedSourceIds.has(source.id),
+  );
+  return {
+    imported,
+    duplicates: items.length - imported,
+    batchId,
+    batch,
+    transactions: importedRows.map((row) =>
+      serializeTransaction(
+        row,
+        context.user.displayName,
+        member?.coupleId ?? null,
+      ),
+    ),
+    sources: affectedSources,
+  };
 }
 
 export async function updateTransaction(
@@ -493,10 +556,28 @@ export async function updateTransaction(
       and(
         eq(transactions.id, id),
         eq(transactions.ownerId, context.user.userId),
+        invoicePaymentEditGuard(patch),
       ),
     )
     .returning();
-  if (!transaction) throw new ApiError(404, "Lançamento não encontrado.");
+  if (!transaction) {
+    const [owned] = await context.db
+      .select({ id: transactions.id })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.id, id),
+          eq(transactions.ownerId, context.user.userId),
+        ),
+      )
+      .limit(1);
+    if (owned)
+      throw new ApiError(
+        409,
+        "Os vínculos deste pagamento mudaram. Atualize a página e confira as faturas antes de corrigir o lançamento.",
+      );
+    throw new ApiError(404, "Lançamento não encontrado.");
+  }
   // Preserve the original import fingerprint when correcting a row so a repeat
   // upload does not reinsert the original bank description or category.
   return {
@@ -537,11 +618,16 @@ export async function deleteImport(context: Context, id: string) {
     (result[0].results[0] as { count: number } | undefined)?.count ?? 0,
   );
   const restoredBalances = result[2].meta.changes;
+  const currentSources: Source[] = await context.db
+    .select()
+    .from(sources)
+    .where(eq(sources.ownerId, ownerId));
   return {
     deleted: result[3].meta.changes,
     restoredBalances,
     keptBalances: Math.max(0, tracked - restoredBalances),
     legacyBaselineUnknown: !batch.balanceTracking,
+    sources: currentSources,
   };
 }
 
@@ -570,27 +656,46 @@ export async function updateCouple(context: Context, request: Request) {
   const ownerId = context.user.userId;
   const member = await membership(context);
   const now = new Date().toISOString();
+  const readConfirmedCouple = async (
+    coupleId: string,
+  ): Promise<NonNullable<AppState["couple"]>> => {
+    const viewer = alias(coupleMembers, "couple_viewer");
+    const members = await context.db
+      .select({ id: users.id, name: users.displayName })
+      .from(coupleMembers)
+      .innerJoin(users, eq(users.id, coupleMembers.userId))
+      .innerJoin(
+        viewer,
+        and(
+          eq(viewer.coupleId, coupleMembers.coupleId),
+          eq(viewer.userId, ownerId),
+        ),
+      )
+      .where(eq(coupleMembers.coupleId, coupleId))
+      .orderBy(asc(coupleMembers.slot));
+    if (!members.length)
+      throw new ApiError(
+        409,
+        "Seu vínculo de casal mudou. Atualize a página e tente novamente.",
+      );
+    return { id: coupleId, members };
+  };
   if (body.action === "leave") {
     if (member) {
       await context.d1.batch([
         context.d1
-          .prepare(
-            "UPDATE transactions SET shared = 0, shared_couple_id = NULL WHERE owner_id = ? AND shared_couple_id = ?",
-          )
-          .bind(ownerId, member.coupleId),
+          .prepare(CLEAR_COUPLE_SHARING_SQL)
+          .bind(member.coupleId, ownerId),
         // Ending a relationship removes the link for both people. Their own
         // financial data remains private and unchanged; a future couple has
         // another id and cannot inherit this one's explicit sharing.
-        context.d1
-          .prepare(
-            "DELETE FROM couples WHERE id = ? AND EXISTS (SELECT 1 FROM couple_members WHERE user_id = ? AND couple_id = couples.id)",
-          )
-          .bind(member.coupleId, ownerId),
+        context.d1.prepare(DELETE_COUPLE_SQL).bind(member.coupleId, ownerId),
       ]);
     }
     return {};
   }
   if (body.action === "create") {
+    const coupleId = member?.coupleId ?? crypto.randomUUID();
     const code = createInviteCode();
     const inviteHash = await hashInvite(code);
     const expiresAt = new Date(
@@ -609,7 +714,6 @@ export async function updateCouple(context: Context, request: Request) {
           "Seu vínculo de casal mudou. Atualize a página e tente novamente.",
         );
     } else {
-      const coupleId = crypto.randomUUID();
       try {
         await context.d1.batch([
           context.d1
@@ -630,7 +734,7 @@ export async function updateCouple(context: Context, request: Request) {
         );
       }
     }
-    return { code };
+    return { code, couple: await readConfirmedCouple(coupleId) };
   }
   const code = boundedText(body.code, "Código do convite", 32)
     .replace(/\s|-/g, "")
@@ -647,11 +751,12 @@ export async function updateCouple(context: Context, request: Request) {
     // Unique (couple_id, slot), slot CHECK, and user_id primary key enforce
     // capacity two and one relationship per person even for concurrent joins.
     const result = await context.d1
-      .prepare(JOIN_COUPLE_SQL)
+      .prepare(`${JOIN_COUPLE_SQL} RETURNING couple_id AS coupleId`)
       .bind(ownerId, now, inviteHash, now, ownerId)
-      .run();
-    if (result.meta.changes !== 1)
+      .first<{ coupleId: string }>();
+    if (!result)
       throw new ApiError(400, "Convite inválido, expirado ou já utilizado.");
+    return { couple: await readConfirmedCouple(result.coupleId) };
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw new ApiError(
@@ -659,5 +764,4 @@ export async function updateCouple(context: Context, request: Request) {
       "Não foi possível aceitar este convite. Atualize a página e tente novamente.",
     );
   }
-  return {};
 }

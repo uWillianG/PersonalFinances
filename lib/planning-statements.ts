@@ -11,7 +11,12 @@ WHERE s.id = ? AND ${scheduleAccess}
   AND s.frequency = ? AND s.start_date = ? AND s.end_date IS ?
   AND (? IS NULL OR EXISTS (
     SELECT 1 FROM transactions t WHERE t.id = ? AND t.kind = s.kind AND (
-      (s.scope = 'personal' AND t.owner_id = (SELECT user_id FROM actor) AND t.shared = 0) OR
+      (s.scope = 'personal' AND t.owner_id = (SELECT user_id FROM actor) AND (
+        t.shared = 0 OR NOT EXISTS (
+          SELECT 1 FROM couple_members current_owner
+          WHERE current_owner.user_id = t.owner_id AND current_owner.couple_id = t.shared_couple_id
+        )
+      )) OR
       (s.scope = 'couple' AND t.shared = 1 AND t.shared_couple_id = s.couple_id AND EXISTS (
         SELECT 1 FROM couple_members transaction_owner WHERE transaction_owner.user_id = t.owner_id AND transaction_owner.couple_id = s.couple_id
       ))

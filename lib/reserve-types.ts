@@ -28,6 +28,8 @@ export interface ReserveEstimate {
   personalProvisionCents: number;
   sharedProvisionCents: number;
   appliedSharedCents: number;
+  cashPersonalProvisionCents: number;
+  cashSharedProvisionCents: number;
   extraExpenseCents: number;
   pendingIncomeCents: number;
   cardSpendingCents: number;

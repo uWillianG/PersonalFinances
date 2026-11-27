@@ -631,12 +631,12 @@ function ReserveCalculator({
                     />
                     <MoneyRow
                       label="Planejamento pessoal ainda previsto"
-                      value={estimate.personalProvisionCents}
+                      value={estimate.cashPersonalProvisionCents}
                       deduction
                     />
                     <MoneyRow
                       label="Compromissos do casal considerados"
-                      value={estimate.appliedSharedCents}
+                      value={estimate.cashSharedProvisionCents}
                       deduction
                     />
                     <MoneyRow

@@ -3855,6 +3855,23 @@ main {
   .import-actions > .text-button {
     margin-right: auto;
   }
+  .bars {
+    gap: 6px;
+  }
+  .bar-group {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .bar-pair > i {
+    flex: 1;
+    min-width: 0;
+    max-width: 13px;
+  }
+}
+@media (max-width: 360px) {
+  .metrics-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -165,7 +165,12 @@ export async function getPlanningState(
         transaction &&
         transaction.kind === schedule.kind &&
         (schedule.scope === "personal"
-          ? transaction.ownerId === viewerId && !transaction.shared
+          ? transaction.ownerId === viewerId &&
+            !(
+              transaction.shared &&
+              coupleId !== null &&
+              transaction.sharedCoupleId === coupleId
+            )
           : transaction.shared &&
             transaction.sharedCoupleId === schedule.coupleId &&
             transactionOwnerCoupleId === schedule.coupleId);
@@ -272,7 +277,25 @@ export async function copyBudgets(context: Context, request: Request) {
     (results[0].results[0] as { count?: number } | undefined)?.count ?? 0,
   );
   const copied = results[1].meta.changes;
-  return { copied, skipped: count - copied };
+  const destination = await context.db
+    .select({ row: budgetLimits, ownerName: users.displayName })
+    .from(budgetLimits)
+    .innerJoin(users, eq(users.id, budgetLimits.ownerId))
+    .where(
+      and(
+        eq(budgetLimits.scopeKey, info.scopeKey),
+        eq(budgetLimits.month, input.toMonth),
+        access(budgetLimits, context.user.userId),
+      ),
+    )
+    .orderBy(asc(budgetLimits.category));
+  return {
+    copied,
+    skipped: count - copied,
+    budgets: destination.map(({ row, ownerName }) =>
+      budgetValue(row, ownerName),
+    ),
+  };
 }
 
 export async function createSchedule(context: Context, request: Request) {

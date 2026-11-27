@@ -63,6 +63,8 @@ Os orçamentos e as despesas recorrentes são agrupados por categoria e escopo. 
 
 Parcelas identificadas em arquivos anteriores que ainda faltam importar no mês analisado entram na provisão da mesma categoria. Ao importar a parcela real, essa previsão é substituída pelo consumo registrado. As parcelas dos seis meses seguintes aparecem como referência separada.
 
+A identificação da compra parcelada independe da categoria e do compartilhamento: corrigir uma parcela ou marcá-la para o casal não cria outra compra prevista. Se uma parcela ainda não importada já estiver coberta pelo total conferido da mesma fatura, ela continua no planejamento mensal, mas sua proteção não é descontada outra vez do caixa. Pagamentos vinculados já realizados também contam nessa conferência; ajustes manuais continuam sendo respeitados.
+
 Os pagamentos vinculados na área Faturas abatem a proteção correspondente; um pagamento sem vínculo não identifica sozinho qual fatura foi quitada. Confira os totais e use o ajuste manual se necessário. As reservas virtuais também não apontam uma conta: a proteção inicial considera as metas pessoais e os aportes líquidos próprios nas metas conjuntas, limitados ao saldo dessas metas. Ajuste esse valor se a reserva estiver fora das contas cadastradas. Os aportes próprios líquidos do mês também reduzem a sobra mensal para não sugerir novamente o que já foi destinado a uma meta.
 
 Os ajustes são privados e persistem separadamente por mês: manter disponível, outros gastos previstos e valores manuais de faturas, caixinhas e compromissos conjuntos. Alterá-los simula a estimativa antes de salvar; restaurar o automático remove somente esses ajustes. Nenhuma simulação, salvamento ou restauração cria investimentos, aportes ou lançamentos financeiros.
@@ -78,6 +80,10 @@ CSV e OFX são lidos como dados estruturados. PDF com texto passa por extração
 O OCR não usa um serviço de reconhecimento na nuvem. O navegador precisa baixar o mecanismo e os arquivos de idioma, o que pode exigir conexão e demorar na primeira leitura. Reconhecimento de texto e identificação de colunas podem errar; confira valores, datas, direção dos movimentos e parcelas na prévia. A confirmação envia os lançamentos normalizados para a API; o fluxo de extração acontece no navegador.
 
 A existência de um formato exportado pela instituição não garante que todos os seus layouts sejam reconhecidos. Sicredi, Mercado Pago, PicPay, Nubank e Sólides precisam ser validados com arquivos reais de cada conta. CSV, OFX, PDF e imagens têm leitura inicial implementada, sujeita a essa validação. CNAB ainda não é suportado.
+
+Os valores importados são em reais. Valores ou saldos explicitamente em outra moeda são recusados com aviso, sem conversão automática. Quando o CSV traz uma coluna em reais inequívoca, ela pode ser usada mesmo que o arquivo também contenha valores estrangeiros. Em colunas separadas de crédito e débito, uma célula preenchida com conteúdo inválido invalida a linha; ela não é tratada silenciosamente como vazia. Sufixos de débito como `42,50D` indicam saída. Datas como `05/11` em descrições bancárias não são inferidas como parcelas, salvo identificação explícita de parcelamento.
+
+No cartão, a multiplicidade das compras é conferida depois do ajuste ao mês de fatura, preservando duas compras legítimas que caiam no mesmo dia de fevereiro. Arquivos parciais sobrepostos sem identificador externo ainda exigem conferência; parcelas que mudam alguns centavos entre meses também podem ser ambíguas. As correções de leitura não reescrevem lotes antigos. Revise um lote afetado antes de reimportá-lo, pois corrigir data, tipo ou parcelas pode alterar seus identificadores.
 
 [public/modelo-importacao.csv](public/modelo-importacao.csv) é um exemplo sintético, sem dados pessoais. Usa as colunas `data,descricao,valor,tipo,categoria`, datas `AAAA-MM-DD`, ponto decimal e valores de saída negativos. Contém Pix, salário, recarga de benefício, parcela e pagamento de fatura. O mesmo conteúdo em [fixtures/sample.csv](fixtures/sample.csv) serve aos testes. Uma importação associa cada arquivo à sua fonte; reimportar o mesmo conteúdo na mesma fonte deve preservar os lançamentos existentes.
 
@@ -123,6 +129,12 @@ node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1
 Não reaplique arquivos já executados. O banco local e o hospedado são separados; a publicação pelo fluxo Sites aplica as migrações hospedadas. Os helpers da skill Sites preparam dependências, build, pacote de fonte e publicação; não altere o `project_id` ao atualizar o mesmo Site.
 
 ## Verificação
+
+Além dos fluxos principais, as regressões cobrem falhas de atualização após uma operação já salva, respostas antigas de rede, entrada monetária brasileira, encerramento do casal, concorrência ao editar pagamentos vinculados e navegação em telas de 320 px. A interface aplica os registros confirmados pelo servidor antes de consultar o estado completo; uma consulta atrasada não substitui dados salvos depois. Uma resposta inválida preserva o último estado conhecido e apresenta erro para conferência.
+
+O encerramento do casal torna privados os lançamentos anteriormente compartilhados dos dois integrantes. Marcações antigas de um vínculo já encerrado não impedem o uso pessoal desses lançamentos no calendário. Os testes de isolamento usam identidades sintéticas e SQLite; o fluxo de duas contas reais no hosting e Safari em iPhone físico ainda precisam de validação própria.
+
+As atualizações de dependências incluem Next, Zod e o leitor PDF.js, com o worker do PDF sincronizado pelo preparo de assets. Os [avisos de segurança do PDF.js](https://github.com/advisories/GHSA-hq66-cqwq-w95j) e do [Zod](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5) documentam as correções de versão; a exposição efetiva depende dos caminhos usados pela aplicação. O Clara usa Vinext e não serve pelo servidor nativo do Next.
 
 `npm test` executa os testes de cálculo, importação, validação e banco SQLite sem navegador. `npm run typecheck` verifica os tipos.
 

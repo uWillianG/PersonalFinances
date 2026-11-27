@@ -692,3 +692,220 @@ test("shared missing installments stay in the joint provision and follow the use
     77_000,
   );
 });
+
+function missingInvoiceState(): AppState {
+  return state({
+    sources: [
+      source({ initialBalanceCents: 100_000 }),
+      source({ id: "credit", type: "credit", initialBalanceCents: 0 }),
+    ],
+    transactions: [
+      transaction("income", 100_000),
+      transaction("expense", 10_000, {
+        id: "old-purchase",
+        sourceId: "credit",
+        date: "2026-10-05",
+        description: "Notebook 1/4",
+        category: "Compras",
+        installmentCurrent: 1,
+        installmentTotal: 4,
+      }),
+      transaction("card_payment", 10_000, {
+        id: "old-payment",
+        date: "2026-10-10",
+      }),
+    ],
+    cardInvoices: [
+      {
+        id: "old-invoice",
+        sourceId: "credit",
+        month: "2026-10",
+        confirmedTotalCents: 10_000,
+      },
+      {
+        id: "current-invoice",
+        sourceId: "credit",
+        month,
+        confirmedTotalCents: 10_000,
+      },
+    ],
+    invoicePayments: [
+      {
+        id: "old-link",
+        invoiceId: "old-invoice",
+        transactionId: "old-payment",
+        amountCents: 10_000,
+      },
+    ],
+    cardCycles: [],
+  });
+}
+
+test("recategorizing or sharing an imported installment does not create another missing payment", () => {
+  const data = missingInvoiceState();
+  data.couple = couple;
+  data.transactions.push(
+    transaction("expense", 10_000, {
+      id: "new-purchase",
+      sourceId: "credit",
+      description: "Notebook 2/4",
+      category: "Educação",
+      shared: true,
+      installmentCurrent: 2,
+      installmentTotal: 4,
+    }),
+  );
+  const current = estimate(data);
+  assert.equal(current.personalProvisionCents, 0);
+  assert.equal(current.sharedProvisionCents, 0);
+  assert.equal(
+    current.issues.some((issue) => issue.code === "installment_forecast"),
+    false,
+  );
+  const next = estimate(data, {}, "2026-12", "2026-12-26");
+  assert.equal(next.personalProvisionCents, 0);
+  assert.equal(next.sharedProvisionCents, 10_000);
+});
+
+test("verified unpaid invoices protect a missing installment once in cash and retain its monthly forecast", () => {
+  const data = missingInvoiceState();
+  const result = estimate(data, { minimumBalanceCents: 188_000 });
+  assert.equal(result.personalProvisionCents, 10_000);
+  assert.equal(result.monthlyMarginCents, 90_000);
+  assert.equal(result.cardReserveCents, 10_000);
+  assert.equal(result.cashPersonalProvisionCents, 0);
+  assert.equal(result.cashCapacityCents, 2_000);
+  assert.equal(result.suggestedCents, 2_000);
+  assert.ok(
+    result.issues.some((issue) => issue.code === "installment_invoice_overlap"),
+  );
+});
+
+test("already paid verified invoices do not reserve their missing purchase again after the bank debit", () => {
+  const data = missingInvoiceState();
+  data.transactions.push(
+    transaction("card_payment", 10_000, {
+      id: "current-payment",
+      date: `${month}-10`,
+    }),
+  );
+  data.invoicePayments!.push({
+    id: "current-link",
+    invoiceId: "current-invoice",
+    transactionId: "current-payment",
+    amountCents: 10_000,
+  });
+  const result = estimate(data, { minimumBalanceCents: 188_000 });
+  assert.equal(result.bankBalanceCents, 190_000);
+  assert.equal(result.cardReserveCents, 0);
+  assert.equal(result.personalProvisionCents, 10_000);
+  assert.equal(result.cashPersonalProvisionCents, 0);
+  assert.equal(result.suggestedCents, 2_000);
+});
+
+test("partial invoice payment and manual zero preserve the unprotected remainder of missing consumption", () => {
+  const data = missingInvoiceState();
+  data.transactions.push(
+    transaction("card_payment", 6_000, {
+      id: "partial-payment",
+      date: `${month}-10`,
+    }),
+  );
+  data.invoicePayments!.push({
+    id: "partial-link",
+    invoiceId: "current-invoice",
+    transactionId: "partial-payment",
+    amountCents: 6_000,
+  });
+  const automatic = estimate(data, { minimumBalanceCents: 188_000 });
+  assert.equal(automatic.bankBalanceCents, 194_000);
+  assert.equal(automatic.cardReserveCents, 4_000);
+  assert.equal(automatic.cashPersonalProvisionCents, 0);
+  assert.equal(automatic.suggestedCents, 2_000);
+  const manual = estimate(data, {
+    minimumBalanceCents: 188_000,
+    cardReserveCents: 0,
+  });
+  assert.equal(manual.cardReserveCents, 0);
+  assert.equal(manual.cashPersonalProvisionCents, 4_000);
+  assert.equal(manual.suggestedCents, 2_000);
+  const unpaid = missingInvoiceState();
+  assert.equal(
+    estimate(unpaid, { cardReserveCents: 0 }).cashPersonalProvisionCents,
+    10_000,
+  );
+});
+
+test("invoice overlap never releases the remaining category budget or unrelated recurrence", () => {
+  const data = missingInvoiceState();
+  data.budgets = [budget({ category: "Compras", limitCents: 15_000 })];
+  assert.equal(estimate(data).cashPersonalProvisionCents, 15_000);
+  data.budgets[0].limitCents = 5_000;
+  const partialBudget = estimate(data);
+  assert.equal(partialBudget.personalProvisionCents, 10_000);
+  assert.equal(partialBudget.cashPersonalProvisionCents, 5_000);
+  data.budgets = [];
+  data.schedules = [schedule({ category: "Compras", amountCents: 7_000 })];
+  const recurring = estimate(data);
+  assert.equal(recurring.personalProvisionCents, 17_000);
+  assert.equal(recurring.cashPersonalProvisionCents, 7_000);
+});
+
+test("a verified gap in one card cannot cover the installment forecast from another card", () => {
+  const data = missingInvoiceState();
+  data.sources.push(
+    source({ id: "another-credit", type: "credit", initialBalanceCents: 0 }),
+  );
+  data.transactions.find((tx) => tx.id === "old-purchase")!.sourceId =
+    "another-credit";
+  data.cardInvoices!.find((invoice) => invoice.id === "old-invoice")!.sourceId =
+    "another-credit";
+  const result = estimate(data, { minimumBalanceCents: 188_000 });
+  assert.equal(result.cardReserveCents, 10_000);
+  assert.equal(result.cashPersonalProvisionCents, 10_000);
+  assert.equal(result.suggestedCents, 0);
+});
+
+test("same-card verified coverage is consumed once across categories and skips already budgeted portions", () => {
+  const data = missingInvoiceState();
+  data.transactions.push(
+    transaction("expense", 10_000, {
+      sourceId: "credit",
+      date: "2026-10-05",
+      description: "Câmera 1/4",
+      category: "Educação",
+      installmentCurrent: 1,
+      installmentTotal: 4,
+    }),
+  );
+  data.cardInvoices![0].confirmedTotalCents = 20_000;
+  data.transactions.find((tx) => tx.id === "old-payment")!.amountCents = 20_000;
+  data.invoicePayments![0].amountCents = 20_000;
+  const result = estimate(data);
+  assert.equal(result.personalProvisionCents, 20_000);
+  assert.equal(result.cashPersonalProvisionCents, 10_000);
+  data.budgets = [budget({ category: "Compras", limitCents: 10_000 })];
+  const budgeted = estimate(data);
+  assert.equal(budgeted.personalProvisionCents, 20_000);
+  assert.equal(budgeted.cashPersonalProvisionCents, 10_000);
+});
+
+test("unverified or zero-total invoices cannot erase an unsupported missing-installment provision", () => {
+  const data = missingInvoiceState();
+  data.cardInvoices![1].confirmedTotalCents = null;
+  assert.equal(estimate(data).cashPersonalProvisionCents, 10_000);
+  data.cardInvoices![1].confirmedTotalCents = 0;
+  assert.equal(estimate(data).cashPersonalProvisionCents, 10_000);
+});
+
+test("manual shared provisions remain literal even when the shared forecast overlaps a verified invoice", () => {
+  const data = missingInvoiceState();
+  data.couple = couple;
+  data.transactions.find((tx) => tx.id === "old-purchase")!.shared = true;
+  const automatic = estimate(data);
+  assert.equal(automatic.sharedProvisionCents, 10_000);
+  assert.equal(automatic.cashSharedProvisionCents, 0);
+  const manual = estimate(data, { sharedCommitmentCents: 3_000 });
+  assert.equal(manual.appliedSharedCents, 3_000);
+  assert.equal(manual.cashSharedProvisionCents, 3_000);
+});

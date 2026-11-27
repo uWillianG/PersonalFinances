@@ -144,13 +144,27 @@ test.describe("API de planejamento no banco local de teste", () => {
         201,
       );
       ids.add(existing.budget.id);
-      const copied = await successful<{ copied: number; skipped: number }>(
+      const copied = await successful<{
+        copied: number;
+        skipped: number;
+        budgets: BudgetLimit[];
+      }>(
         await request.post("/api/budgets/copy", {
           data: { scope: "personal", fromMonth, toMonth },
         }),
       );
-      expect(copied).toEqual({ copied: 1, skipped: 1 });
+      expect(copied).toMatchObject({ copied: 1, skipped: 1 });
       const afterCopy = await state(request);
+      expect(copied.budgets).toHaveLength(2);
+      expect(
+        [...copied.budgets].sort((a, b) => a.id.localeCompare(b.id)),
+      ).toEqual(
+        (afterCopy.budgets ?? [])
+          .filter(
+            (budget) => budget.scope === "personal" && budget.month === toMonth,
+          )
+          .sort((a, b) => a.id.localeCompare(b.id)),
+      );
       const synthetic =
         afterCopy.budgets?.filter((budget) =>
           budget.category.toLowerCase().includes(suffix),

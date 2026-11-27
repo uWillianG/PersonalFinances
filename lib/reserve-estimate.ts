@@ -6,8 +6,12 @@ import {
   categoryKey,
   todayISO,
 } from "./planning.ts";
-import { formatMoney, installmentForecast } from "./finance.ts";
-import { invoiceProtection } from "./invoices.ts";
+import {
+  formatMoney,
+  installmentForecast,
+  missingInstallmentForecast,
+} from "./finance.ts";
+import { invoiceProtection, invoiceSummaries } from "./invoices.ts";
 import {
   defaultReservePlan,
   type ReserveEstimate,
@@ -246,7 +250,12 @@ export function estimateReserve(
 
   const provisionGroups = new Map<
     string,
-    { scope: PlanScope; remaining: number; recurring: number }
+    {
+      scope: PlanScope;
+      remaining: number;
+      recurring: number;
+      missing: { sourceId: string; amountCents: number }[];
+    }
   >();
   function group(scope: PlanScope, category: string) {
     const key = `${scope}:${categoryKey(category || "Outros")}`;
@@ -254,6 +263,7 @@ export function estimateReserve(
       scope,
       remaining: 0,
       recurring: 0,
+      missing: [],
     };
     provisionGroups.set(key, item);
     return item;
@@ -303,45 +313,21 @@ export function estimateReserve(
       group(entry.schedule.scope, entry.schedule.category).recurring +=
         entry.schedule.amountCents;
   }
-  const previous = new Date(`${month}-01T00:00:00Z`);
-  previous.setUTCMonth(previous.getUTCMonth() - 1);
-  const previousMonth = previous.toISOString().slice(0, 7);
-  const installmentGroups = new Map<
-    string,
-    { scope: PlanScope; category: string; transactions: Transaction[] }
-  >();
-  for (const transaction of eligible) {
-    if (sourceById.get(transaction.sourceId)?.type !== "credit") continue;
+  let missingInstallmentsCents = 0;
+  const missingInstallments = missingInstallmentForecast(
+    eligible.filter(
+      (transaction) => sourceById.get(transaction.sourceId)?.type === "credit",
+    ),
+    month,
+  );
+  for (const { transaction, amountCents } of missingInstallments) {
     const scope: PlanScope =
       transaction.shared && data.couple ? "couple" : "personal";
-    const key = `${scope}:${categoryKey(transaction.category || "Outros")}`;
-    const item = installmentGroups.get(key) ?? {
-      scope,
-      category: transaction.category,
-      transactions: [],
-    };
-    item.transactions.push(transaction);
-    installmentGroups.set(key, item);
-  }
-  let missingInstallmentsCents = 0;
-  for (const item of installmentGroups.values()) {
-    const forecast = installmentForecast(item.transactions, previousMonth)[0]
-      .amountCents;
-    const imported = item.transactions
-      .filter(
-        (transaction) =>
-          transaction.date.slice(0, 7) === month &&
-          transaction.kind === "expense" &&
-          transaction.installmentCurrent !== null &&
-          transaction.installmentTotal !== null &&
-          transaction.installmentTotal >= 2 &&
-          transaction.installmentCurrent >= 1 &&
-          transaction.installmentCurrent <= transaction.installmentTotal,
-      )
-      .reduce((total, transaction) => total + transaction.amountCents, 0);
-    const missing = Math.max(0, forecast - imported);
-    group(item.scope, item.category).recurring += missing;
-    missingInstallmentsCents += missing;
+    group(scope, transaction.category).missing.push({
+      sourceId: transaction.sourceId,
+      amountCents,
+    });
+    missingInstallmentsCents += amountCents;
   }
   if (missingInstallmentsCents > 0)
     addIssue(
@@ -353,7 +339,11 @@ export function estimateReserve(
   let personalProvisionCents = 0,
     sharedProvisionCents = 0;
   for (const item of provisionGroups.values()) {
-    const amount = Math.max(item.remaining, item.recurring);
+    const missing = item.missing.reduce(
+      (total, entry) => total + entry.amountCents,
+      0,
+    );
+    const amount = Math.max(item.remaining, item.recurring + missing);
     if (item.scope === "personal") personalProvisionCents += amount;
     else sharedProvisionCents += amount;
   }
@@ -389,6 +379,68 @@ export function estimateReserve(
     Math.max(
       invoiceData?.pendingCents ?? cardSpendingCents,
       scheduledCardCents,
+    );
+  // A verified bill can already protect an absent installment either through a
+  // linked payment (already reflected in bank cash) or its unpaid protection.
+  // Keep that installment in monthly consumption, but never reserve it twice
+  // in cash. Manual totals cannot be assigned to a particular card implicitly.
+  const coveredMissingByCard = new Map<string, number>();
+  if (tracksInvoices) {
+    const known = {
+      ...data,
+      transactions: data.transactions.filter(
+        (transaction) => transaction.date <= asOf,
+      ),
+    };
+    for (const invoice of invoiceSummaries(known, month, asOf)) {
+      if (!invoice.confirmed) continue;
+      const gap = Math.max(
+        0,
+        invoice.totalCents - Math.max(0, invoice.computedTotalCents),
+      );
+      const covered =
+        invoice.paidCents +
+        (plan.cardReserveCents === null ? invoice.remainingCents : 0);
+      coveredMissingByCard.set(invoice.sourceId, Math.min(gap, covered));
+    }
+  }
+  let cashPersonalProvisionCents = 0,
+    automaticCashSharedProvisionCents = 0;
+  for (const item of provisionGroups.values()) {
+    const missing = item.missing.reduce(
+      (total, entry) => total + entry.amountCents,
+      0,
+    );
+    const monthlyProvision = Math.max(item.remaining, item.recurring + missing);
+    let incremental =
+      monthlyProvision - Math.max(item.remaining, item.recurring);
+    let covered = 0;
+    if (item.scope === "personal" || plan.sharedCommitmentCents === null) {
+      for (const entry of item.missing) {
+        const available = coveredMissingByCard.get(entry.sourceId) ?? 0;
+        const amount = Math.min(entry.amountCents, available, incremental);
+        coveredMissingByCard.set(entry.sourceId, available - amount);
+        incremental -= amount;
+        covered += amount;
+      }
+    }
+    const cashProvision = monthlyProvision - covered;
+    if (item.scope === "personal") cashPersonalProvisionCents += cashProvision;
+    else automaticCashSharedProvisionCents += cashProvision;
+  }
+  const cashSharedProvisionCents =
+    plan.sharedCommitmentCents ?? automaticCashSharedProvisionCents;
+  const coveredInstallmentCashCents =
+    personalProvisionCents +
+    appliedSharedCents -
+    cashPersonalProvisionCents -
+    cashSharedProvisionCents;
+  if (coveredInstallmentCashCents > 0)
+    addIssue(
+      "installment_invoice_overlap",
+      "Parcelas já cobertas na fatura",
+      `${formatMoney(coveredInstallmentCashCents)} de parcelas previstas continuam no planejamento do mês, mas já estão cobertas por pagamentos vinculados ou pela proteção da fatura conferida. Esse valor não é reservado outra vez no caixa.`,
+      "info",
     );
   if (
     plan.cardReserveCents === null &&
@@ -503,8 +555,8 @@ export function estimateReserve(
     goalContributionsCents;
   const cashCapacityCents =
     bankBalanceCents -
-    personalProvisionCents -
-    appliedSharedCents -
+    cashPersonalProvisionCents -
+    cashSharedProvisionCents -
     extraExpenseCents -
     cardReserveCents -
     goalReserveCents -
@@ -524,6 +576,8 @@ export function estimateReserve(
     personalProvisionCents,
     sharedProvisionCents,
     appliedSharedCents,
+    cashPersonalProvisionCents,
+    cashSharedProvisionCents,
     extraExpenseCents,
     pendingIncomeCents,
     cardSpendingCents,
